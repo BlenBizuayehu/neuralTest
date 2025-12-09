@@ -1,0 +1,407 @@
+.workflow-runner-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.workflow-runner {
+  background: var(--panel-bg, #1a1b26);
+  border-radius: 16px;
+  width: 600px;
+  max-width: 90%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  animation: scaleIn 0.3s ease;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.workflow-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-color, #2a2b3d);
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-icon {
+  font-size: 24px;
+}
+
+.header-title h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary, #c0caf5);
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted, #565f89);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.close-btn:hover {
+  background: var(--close-hover-bg, #2a2b3d);
+  color: var(--text-primary, #c0caf5);
+}
+
+.workflow-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.workflow-content h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted, #565f89);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 16px 0;
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.empty-icon {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 16px;
+}
+
+.empty-state p {
+  color: var(--text-muted, #565f89);
+  margin: 0;
+}
+
+.empty-state .hint {
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+/* Workflows List */
+.workflows-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.workflow-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background: var(--item-bg, #1e1f2e);
+  border-radius: 10px;
+  border: 1px solid var(--border-color, #2a2b3d);
+  transition: all 0.2s ease;
+}
+
+.workflow-item:hover {
+  border-color: var(--border-hover, #3d3e52);
+}
+
+.workflow-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.workflow-name {
+  font-weight: 600;
+  color: var(--text-primary, #c0caf5);
+}
+
+.workflow-desc {
+  font-size: 13px;
+  color: var(--text-muted, #565f89);
+}
+
+.run-btn {
+  background: var(--btn-bg, #7aa2f7);
+  color: var(--btn-color, #1a1b26);
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.run-btn:hover {
+  background: var(--btn-hover-bg, #89b4fa);
+}
+
+/* Workflow Details */
+.workflow-details {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.back-btn {
+  background: none;
+  border: 1px solid var(--border-color, #2a2b3d);
+  color: var(--text-secondary, #a9b1d6);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s ease;
+}
+
+.back-btn:hover:not(:disabled) {
+  border-color: var(--text-muted, #565f89);
+  color: var(--text-primary, #c0caf5);
+}
+
+.back-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.workflow-details h4 {
+  margin: 0;
+  text-transform: none;
+  font-size: 16px;
+  color: var(--text-primary, #c0caf5);
+}
+
+/* Steps List */
+.steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.step-item {
+  background: var(--step-bg, #15161e);
+  border-radius: 10px;
+  border: 1px solid var(--border-color, #2a2b3d);
+  overflow: hidden;
+}
+
+.step-item.running {
+  border-color: var(--running-border, #7aa2f7);
+}
+
+.step-item.success {
+  border-color: var(--success-border, #9ece6a);
+}
+
+.step-item.error,
+.step-item.failed {
+  border-color: var(--error-border, #f7768e);
+}
+
+.step-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.step-icon {
+  font-size: 16px;
+}
+
+.step-number {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted, #565f89);
+  text-transform: uppercase;
+}
+
+.step-cmd {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: var(--code-color, #c0caf5);
+}
+
+.step-running {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--running-bg, rgba(122, 162, 247, 0.1));
+  color: var(--running-color, #7aa2f7);
+  font-size: 13px;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--spinner-track, #2a2b3d);
+  border-top-color: var(--spinner-color, #7aa2f7);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.step-output {
+  margin: 0;
+  padding: 12px 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.step-output.stdout {
+  background: var(--stdout-bg, #1a1b26);
+  color: var(--stdout-color, #a9b1d6);
+}
+
+.step-output.stderr {
+  background: var(--stderr-bg, rgba(247, 118, 142, 0.1));
+  color: var(--stderr-color, #f7768e);
+}
+
+.step-suggestion {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--suggestion-bg, linear-gradient(135deg, rgba(187, 154, 247, 0.1), rgba(122, 162, 247, 0.1)));
+}
+
+.suggestion-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.suggestion-content {
+  flex: 1;
+}
+
+.suggestion-content p {
+  margin: 0 0 10px 0;
+  color: var(--text-secondary, #a9b1d6);
+  font-size: 13px;
+}
+
+.fix-cmd {
+  display: block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--fix-color, #9ece6a);
+  background: var(--fix-bg, #1a1b26);
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-top: 8px;
+}
+
+/* Run Result */
+.run-result {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 10px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.run-result.success {
+  background: var(--success-bg, rgba(158, 206, 106, 0.15));
+  color: var(--success-color, #9ece6a);
+}
+
+.run-result.error {
+  background: var(--error-bg, rgba(247, 118, 142, 0.15));
+  color: var(--error-color, #f7768e);
+}
+
+.result-icon {
+  font-size: 20px;
+}
+
+/* Run Workflow Button */
+.run-workflow-btn {
+  width: 100%;
+  background: linear-gradient(135deg, #7aa2f7, #bb9af7);
+  color: var(--btn-color, #1a1b26);
+  border: none;
+  padding: 14px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.run-workflow-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(122, 162, 247, 0.4);
+}
+
+/* Scrollbar */
+.workflow-content::-webkit-scrollbar,
+.step-output::-webkit-scrollbar {
+  width: 8px;
+}
+
+.workflow-content::-webkit-scrollbar-track,
+.step-output::-webkit-scrollbar-track {
+  background: var(--scrollbar-track, #1a1b26);
+}
+
+.workflow-content::-webkit-scrollbar-thumb,
+.step-output::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, #2a2b3d);
+  border-radius: 4px;
+}
+
+.workflow-content::-webkit-scrollbar-thumb:hover,
+.step-output::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover, #3d3e52);
+}
+
+
