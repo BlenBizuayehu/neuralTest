@@ -10,6 +10,7 @@ import {
   setOpenaiApiKey,
   setAiProvider,
   generateWorkflow,
+  clearApiKey,
 } from '../../services/tauriClient';
 
 /**
@@ -29,6 +30,12 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
   useEffect(() => {
     checkConfiguration();
   }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      checkConfiguration();
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
@@ -57,8 +64,13 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
     try {
       const configured = await isAiConfigured();
       setIsConfigured(configured);
+      // If not configured, ensure API key input is visible
+      if (!configured) {
+        setIsConfigured(false);
+      }
     } catch (e) {
       console.error('Failed to check AI configuration:', e);
+      setIsConfigured(false);
     }
   };
 
@@ -80,6 +92,19 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
       addMessage('system', `${provider === 'gemini' ? 'Gemini' : 'OpenAI'} API key configured successfully! You can now use AI features.`);
     } catch (e) {
       addMessage('error', `Failed to set API key: ${e}`);
+    }
+  };
+
+  const handleResetApiKey = async () => {
+    if (confirm('Are you sure you want to reset your API key? You will need to enter it again.')) {
+      try {
+        await clearApiKey();
+        setIsConfigured(false);
+        setApiKeyInput('');
+        addMessage('system', 'API key cleared. Please enter a new API key.');
+      } catch (e) {
+        addMessage('error', `Failed to clear API key: ${e}`);
+      }
     }
   };
 
@@ -280,16 +305,28 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
                 Workflow
               </button>
             </div>
+            {isConfigured && (
+              <button 
+                className="reset-btn" 
+                onClick={handleResetApiKey}
+                title="Reset API Key"
+              >
+                🔑
+              </button>
+            )}
             <button className="close-btn" onClick={onClose}>
               ✕
             </button>
           </div>
         </div>
 
-        {/* API Key Configuration */}
-        {!isConfigured && (
+        {/* API Key Configuration - Always show if not configured */}
+        {!isConfigured ? (
           <div className="api-key-setup">
-            <p>Configure your AI API key to use AI features</p>
+            <div className="setup-header">
+              <h4>🔑 API Key Required</h4>
+              <p>Configure your AI API key to use AI features</p>
+            </div>
             <div className="provider-selector">
               <label>
                 <input
@@ -312,72 +349,96 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
             </div>
             <div className="api-key-input">
               <input
-                type="password"
+                type="text"
                 value={apiKeyInput}
                 onChange={(e) => setApiKeyInput(e.target.value)}
-                placeholder={provider === 'gemini' ? 'AIza... (Get free key at https://makersuite.google.com/app/apikey)' : 'sk-...'}
+                placeholder={provider === 'gemini' ? 'AIza... (Paste your Gemini API key here)' : 'sk-... (Paste your OpenAI API key here)'}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && apiKeyInput.trim()) {
+                    handleSetApiKey();
+                  }
+                }}
               />
-              <button onClick={handleSetApiKey}>Save</button>
+              <button 
+                onClick={handleSetApiKey} 
+                disabled={!apiKeyInput.trim()}
+                style={{ opacity: apiKeyInput.trim() ? 1 : 0.5 }}
+              >
+                Save
+              </button>
             </div>
             {provider === 'gemini' && (
-              <p className="hint">
-                💡 Get a free Gemini API key: <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer">https://makersuite.google.com/app/apikey</a>
-              </p>
+              <div className="setup-help">
+                <p className="hint">
+                  💡 <strong>Get your FREE API key:</strong>
+                </p>
+                <ol className="setup-steps">
+                  <li>Visit: <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer">https://makersuite.google.com/app/apikey</a></li>
+                  <li>Click "Create API Key"</li>
+                  <li>Copy the key (starts with AIza...)</li>
+                  <li>Paste it above and click Save</li>
+                </ol>
+              </div>
             )}
           </div>
+        ) : null}
+
+        {/* Messages - Only show when configured */}
+        {isConfigured && (
+          <>
+            <div className="ai-panel-messages" ref={messagesRef}>
+              {messages.length === 0 && (
+                <div className="empty-state">
+                  <span className="empty-icon">💬</span>
+                  <p>
+                    {mode === 'chat'
+                      ? 'Describe what you want to do in natural language'
+                      : 'Describe a workflow to automate'}
+                  </p>
+                  <div className="suggestions">
+                    <button onClick={() => setInputValue('install dependencies and start dev server')}>
+                      Install deps & start server
+                    </button>
+                    <button onClick={() => setInputValue('show all running docker containers')}>
+                      List Docker containers
+                    </button>
+                    <button onClick={() => setInputValue('create a new git branch called feature')}>
+                      Create git branch
+                    </button>
+                  </div>
+                </div>
+              )}
+              {messages.map(renderMessage)}
+              {isLoading && (
+                <div className="loading-indicator">
+                  <span className="loading-spinner"></span>
+                  <span>Thinking...</span>
+                </div>
+              )}
+            </div>
+
+            {/* Input - Only show when configured */}
+            <form className="ai-panel-input" onSubmit={handleSubmit}>
+              <input
+                ref={inputRef}
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  mode === 'chat'
+                    ? 'What would you like to do?'
+                    : 'Describe your workflow...'
+                }
+                disabled={isLoading}
+              />
+              <button type="submit" disabled={isLoading || !inputValue.trim()}>
+                Send
+              </button>
+            </form>
+          </>
         )}
-
-        {/* Messages */}
-        <div className="ai-panel-messages" ref={messagesRef}>
-          {messages.length === 0 && isConfigured && (
-            <div className="empty-state">
-              <span className="empty-icon">💬</span>
-              <p>
-                {mode === 'chat'
-                  ? 'Describe what you want to do in natural language'
-                  : 'Describe a workflow to automate'}
-              </p>
-              <div className="suggestions">
-                <button onClick={() => setInputValue('install dependencies and start dev server')}>
-                  Install deps & start server
-                </button>
-                <button onClick={() => setInputValue('show all running docker containers')}>
-                  List Docker containers
-                </button>
-                <button onClick={() => setInputValue('create a new git branch called feature')}>
-                  Create git branch
-                </button>
-              </div>
-            </div>
-          )}
-          {messages.map(renderMessage)}
-          {isLoading && (
-            <div className="loading-indicator">
-              <span className="loading-spinner"></span>
-              <span>Thinking...</span>
-            </div>
-          )}
-        </div>
-
-        {/* Input */}
-        <form className="ai-panel-input" onSubmit={handleSubmit}>
-          <input
-            ref={inputRef}
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              mode === 'chat'
-                ? 'What would you like to do?'
-                : 'Describe your workflow...'
-            }
-            disabled={!isConfigured || isLoading}
-          />
-          <button type="submit" disabled={!isConfigured || isLoading || !inputValue.trim()}>
-            Send
-          </button>
-        </form>
       </div>
     </div>
   );

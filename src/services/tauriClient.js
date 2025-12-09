@@ -112,6 +112,13 @@ export async function setAiModel(model) {
   return invoke('set_ai_model', { model });
 }
 
+/**
+ * Clear API key for current provider
+ */
+export async function clearApiKey() {
+  return invoke('clear_api_key');
+}
+
 // ============ Workflows ============
 
 /**

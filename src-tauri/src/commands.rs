@@ -150,6 +150,12 @@ pub fn set_ai_model(model: String) -> Result<(), String> {
     ai::set_model(&model)
 }
 
+/// Clear API key for current provider (to show setup screen again)
+#[tauri::command]
+pub fn clear_api_key() -> Result<(), String> {
+    ai::clear_api_key()
+}
+
 // ============ Workflows ============
 
 /// Run a workflow

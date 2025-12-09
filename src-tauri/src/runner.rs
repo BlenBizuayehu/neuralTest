@@ -50,16 +50,24 @@ pub async fn run_command_emit(
         }),
     );
 
+    // Debug: Log the exact command being executed
+    tracing::info!("Executing command: '{}' in directory: '{}'", command, working_dir);
+    println!("[DEBUG] About to execute command: '{}'", command);
+    println!("[DEBUG] Working directory: '{}'", working_dir);
+
     // Determine shell based on OS
     #[cfg(target_os = "windows")]
-    let (shell, shell_arg) = ("cmd", "/C");
+    let mut cmd = Command::new("powershell");
+    #[cfg(target_os = "windows")]
+    cmd.args(["-NoProfile", "-NonInteractive", "-Command", &command]);
+    
     #[cfg(not(target_os = "windows"))]
-    let (shell, shell_arg) = ("sh", "-c");
+    let mut cmd = Command::new("sh");
+    #[cfg(not(target_os = "windows"))]
+    cmd.args(["-c", &command]);
 
     // Spawn the process
-    let mut child = Command::new(shell)
-        .arg(shell_arg)
-        .arg(&command)
+    let mut child = cmd
         .current_dir(&working_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -186,13 +194,16 @@ pub async fn run_command_sync(
     let working_dir = cwd.unwrap_or(".");
 
     #[cfg(target_os = "windows")]
-    let (shell, shell_arg) = ("cmd", "/C");
+    let mut cmd = Command::new("powershell");
+    #[cfg(target_os = "windows")]
+    cmd.args(["-NoProfile", "-NonInteractive", "-Command", command]);
+    
     #[cfg(not(target_os = "windows"))]
-    let (shell, shell_arg) = ("sh", "-c");
+    let mut cmd = Command::new("sh");
+    #[cfg(not(target_os = "windows"))]
+    cmd.args(["-c", command]);
 
-    let output = Command::new(shell)
-        .arg(shell_arg)
-        .arg(command)
+    let output = cmd
         .current_dir(working_dir)
         .output()
         .await

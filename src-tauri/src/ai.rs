@@ -7,7 +7,7 @@ use crate::models::{AiCommandResponse, AiErrorAnalysis, AiExplanation, AiSuggest
 use crate::redaction::redact_sensitive;
 
 const OPENAI_API_URL: &str = "https://api.openai.com/v1/chat/completions";
-const GEMINI_API_URL: &str = "https://generativelanguage.googleapis.com/v1beta/models";
+const GEMINI_API_URL: &str = "https://generativelanguage.googleapis.com/v1/models";
 
 #[derive(Debug, Clone)]
 enum AiProvider {
@@ -91,22 +91,35 @@ fn get_provider() -> AiProvider {
 fn get_api_key(provider: &AiProvider) -> Result<String, String> {
     match provider {
         AiProvider::Gemini => {
-            // Try database first
-            if let Ok(Some(key)) = db::get_preference("gemini_api_key") {
-                return Ok(key);
+            // Prefer environment variable for easier local configuration
+            if let Ok(key) = std::env::var("GEMINI_API_KEY") {
+                if !key.is_empty() {
+                    return Ok(key);
+                }
             }
-            // Then environment
-            std::env::var("GEMINI_API_KEY").map_err(|_| {
-                "Gemini API key not configured. Get a free key at https://makersuite.google.com/app/apikey".to_string()
-            })
+            // Fall back to stored preference
+            if let Ok(Some(key)) = db::get_preference("gemini_api_key") {
+                if !key.is_empty() {
+                    return Ok(key);
+                }
+            }
+
+            Err("Gemini API key not configured. Add GEMINI_API_KEY to your .env file (get a free key at https://makersuite.google.com/app/apikey).".to_string())
         }
         AiProvider::OpenAI => {
-            if let Ok(Some(key)) = db::get_preference("openai_api_key") {
-                return Ok(key);
+            if let Ok(key) = std::env::var("OPENAI_API_KEY") {
+                if !key.is_empty() {
+                    return Ok(key);
+                }
             }
-            std::env::var("OPENAI_API_KEY").map_err(|_| {
-                "OpenAI API key not configured. Set it in preferences or OPENAI_API_KEY environment variable.".to_string()
-            })
+
+            if let Ok(Some(key)) = db::get_preference("openai_api_key") {
+                if !key.is_empty() {
+                    return Ok(key);
+                }
+            }
+
+            Err("OpenAI API key not configured. Add OPENAI_API_KEY to your .env file or set it in preferences.".to_string())
         }
     }
 }
@@ -115,10 +128,22 @@ fn get_api_key(provider: &AiProvider) -> Result<String, String> {
 fn get_model(provider: &AiProvider) -> String {
     match provider {
         AiProvider::Gemini => {
-            db::get_preference("gemini_model")
+            let model = db::get_preference("gemini_model")
                 .ok()
                 .flatten()
-                .unwrap_or_else(|| "gemini-1.5-flash-latest".to_string())
+                .unwrap_or_else(|| "gemini-2.5-flash".to_string());
+            
+            // Migrate old model names to new ones
+            let model = match model.as_str() {
+                "gemini-pro" | "gemini-1.5-flash" | "gemini-1.5-flash-latest" => {
+                    // Update stored preference to new model name
+                    let _ = db::set_preference("gemini_model", "gemini-2.5-flash");
+                    "gemini-2.5-flash".to_string()
+                }
+                _ => model,
+            };
+            
+            model
         }
         AiProvider::OpenAI => {
             db::get_preference("openai_model")
@@ -242,34 +267,115 @@ pub async fn nl_to_cmd(text: &str, cwd: Option<&str>) -> Result<AiCommandRespons
         r#"You are an expert system-shell assistant. Convert the user's natural language instruction into safe shell command(s).
 
 Context: {}
+Operating System: Windows (PowerShell/Batch)
 
-Rules:
+CRITICAL RULES:
 1. Output ONLY valid JSON in this exact format: {{"commands": ["cmd1", "cmd2"], "warning": null, "explanation": "brief explanation"}}
-2. If the command might be dangerous (rm -rf, format, etc.), set warning to a description
-3. Use the context to determine the right package manager (npm/yarn/pnpm, pip/pip3, cargo, etc.)
-4. For multi-step operations, provide commands in order
-5. Never include secrets or sensitive data in commands
-6. Prefer modern, cross-platform commands when possible"#,
+2. DO NOT include any markdown formatting (no ```, no code blocks)
+3. DO NOT include any natural language explanations outside the JSON
+4. DO NOT start responses with words like "Sure", "Create", "I'll", etc.
+5. Output ONLY the raw JSON object, nothing else
+6. If the command might be dangerous (rm -rf, format, etc.), set warning to a description
+7. Use the context to determine the right package manager (npm/yarn/pnpm, pip/pip3, cargo, etc.)
+8. For Windows, use PowerShell commands (mkdir, New-Item, etc.) or Batch commands
+9. For multi-step operations, provide commands in order
+10. Never include secrets or sensitive data in commands
+11. Prefer modern, cross-platform commands when possible
+
+Example valid output:
+{{"commands": ["mkdir %USERPROFILE%\\Desktop\\test"], "warning": null, "explanation": "Creates a folder called test on the desktop"}}
+
+Remember: Output ONLY the JSON, no other text before or after it."#,
         context_str
     );
 
     let response = call_ai(&system_prompt, &redacted_text).await?;
 
-    // Parse JSON response
-    let cleaned = response.trim();
-    let json_str = if cleaned.starts_with("```") {
-        // Strip markdown code blocks if present
-        cleaned
+    // Debug: Log raw response
+    tracing::debug!("Raw AI response: {}", response);
+
+    // Sanitize response: Remove markdown, natural language prefixes, etc.
+    let mut cleaned = response.trim().to_string();
+    
+    // Remove markdown code blocks (```json, ```, etc.)
+    if cleaned.starts_with("```") {
+        cleaned = cleaned
             .trim_start_matches("```json")
             .trim_start_matches("```")
             .trim_end_matches("```")
             .trim()
+            .to_string();
+    }
+    
+    // Remove common natural language prefixes that AI might add
+    let prefixes_to_remove = [
+        "Sure, ",
+        "Sure! ",
+        "I'll ",
+        "I will ",
+        "Here's ",
+        "Here is ",
+        "The command is: ",
+        "Command: ",
+        "You can use: ",
+        "Create ",
+        "To create ",
+    ];
+    
+    for prefix in &prefixes_to_remove {
+        if cleaned.starts_with(prefix) {
+            cleaned = cleaned.trim_start_matches(prefix).trim_start().to_string();
+        }
+    }
+    
+    // Find JSON object in the response (in case there's text before/after)
+    let json_start = cleaned.find('{');
+    let json_end = cleaned.rfind('}');
+    
+    let json_str = if let (Some(start), Some(end)) = (json_start, json_end) {
+        &cleaned[start..=end]
     } else {
-        cleaned
+        &cleaned
     };
+    
+    // Debug: Log cleaned JSON
+    tracing::debug!("Cleaned JSON string: {}", json_str);
+    println!("[DEBUG] Parsing JSON from cleaned string: {}", json_str);
 
-    serde_json::from_str(json_str)
-        .map_err(|e| format!("Failed to parse AI response: {}. Response was: {}", e, response))
+    let parsed: AiCommandResponse = serde_json::from_str(json_str)
+        .map_err(|e| {
+            let error_msg = format!(
+                "Failed to parse AI response as JSON: {}\nRaw response: {}\nCleaned string: {}",
+                e, response, json_str
+            );
+            tracing::error!("{}", error_msg);
+            error_msg
+        })?;
+    
+    // Debug: Log parsed commands
+    println!("[DEBUG] Parsed commands: {:?}", parsed.commands);
+    tracing::debug!("Parsed {} command(s) from AI response", parsed.commands.len());
+    
+    // Sanitize each command before returning
+    let sanitized_commands: Vec<String> = parsed.commands
+        .into_iter()
+        .map(|cmd| {
+            let mut sanitized = cmd.trim().to_string();
+            // Remove any remaining markdown or natural language
+            sanitized = sanitized
+                .trim_start_matches("```")
+                .trim_end_matches("```")
+                .trim()
+                .to_string();
+            sanitized
+        })
+        .collect();
+    
+    Ok(AiCommandResponse {
+        commands: sanitized_commands,
+        warning: parsed.warning,
+        explanation: parsed.explanation,
+    })
 }
 
 /// Analyze an error and suggest fixes
@@ -444,7 +550,27 @@ pub fn set_model(model: &str) -> Result<(), String> {
 /// Check if AI is configured
 pub fn is_configured() -> bool {
     let provider = get_provider();
-    get_api_key(&provider).is_ok()
+    if let Ok(key) = get_api_key(&provider) {
+        !key.trim().is_empty()
+    } else {
+        false
+    }
+}
+
+/// Clear API key for current provider
+pub fn clear_api_key() -> Result<(), String> {
+    let provider = get_provider();
+    match provider {
+        AiProvider::Gemini => {
+            // Clear API key and reset model to default
+            db::set_preference("gemini_api_key", "").map_err(|e| e.to_string())?;
+            db::set_preference("gemini_model", "gemini-1.5-flash").map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        AiProvider::OpenAI => {
+            db::set_preference("openai_api_key", "").map_err(|e| e.to_string())
+        }
+    }
 }
 
 

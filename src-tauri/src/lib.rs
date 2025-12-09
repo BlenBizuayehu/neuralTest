@@ -42,6 +42,7 @@ pub fn run() {
             set_openai_api_key,
             set_ai_provider,
             set_ai_model,
+            clear_api_key,
             // Workflows
             run_workflow,
             create_workflow,
