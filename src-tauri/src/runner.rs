@@ -22,33 +22,32 @@ pub async fn run_command_emit(
     command: String,
     cwd: Option<String>,
     generated_by_ai: bool,
+    save_history: Option<bool>,
+    session_id: Option<String>,
 ) -> Result<CommandHandle, String> {
     let timestamp = Utc::now().to_rfc3339();
     let working_dir = cwd.clone().unwrap_or_else(|| ".".to_string());
 
-    // Create initial history entry
-    let history = CommandHistory {
-        id: None,
-        timestamp: timestamp.clone(),
-        command_text: command.clone(),
-        generated_by_ai,
-        cwd: cwd.clone(),
-        exit_code: None,
-        stdout: None,
-        stderr: None,
+    // Save history if explicitly requested OR if session_id is provided (session-based persistence)
+    let should_save = save_history.unwrap_or(false) || session_id.is_some();
+    let id = if should_save {
+        // Create initial history entry
+        let history = CommandHistory {
+            id: None,
+            timestamp: timestamp.clone(),
+            command_text: command.clone(),
+            generated_by_ai,
+            cwd: cwd.clone(),
+            exit_code: None,
+            stdout: None,
+            stderr: None,
+            session_id: session_id.clone(),
+        };
+        db::insert_command_history(&history).map_err(|e| e.to_string())?
+    } else {
+        // Use timestamp as ID for non-persisted commands
+        timestamp.parse::<i64>().unwrap_or(0) % 1000000000
     };
-
-    let id = db::insert_command_history(&history).map_err(|e| e.to_string())?;
-
-    // Emit start event
-    let _ = app.emit(
-        "command_started",
-        serde_json::json!({
-            "id": id,
-            "command_text": command,
-            "timestamp": timestamp
-        }),
-    );
 
     // Debug: Log the exact command being executed
     tracing::info!("Executing command: '{}' in directory: '{}'", command, working_dir);
@@ -57,22 +56,54 @@ pub async fn run_command_emit(
 
     // Determine shell based on OS
     #[cfg(target_os = "windows")]
-    let mut cmd = Command::new("powershell");
-    #[cfg(target_os = "windows")]
-    cmd.args(["-NoProfile", "-NonInteractive", "-Command", &command]);
+    let mut cmd = {
+        // Resolve the working directory to an absolute path
+        let resolved_dir = if std::path::Path::new(&working_dir).exists() {
+            std::path::Path::new(&working_dir)
+                .canonicalize()
+                .unwrap_or_else(|_| std::path::Path::new(&working_dir).to_path_buf())
+        } else {
+            // If directory doesn't exist, try to get parent or use current directory
+            std::env::current_dir()
+                .unwrap_or_else(|_| std::path::Path::new(&working_dir).to_path_buf())
+        };
+        
+        let mut cmd = Command::new("powershell");
+        // Use -Command with proper escaping for PowerShell
+        cmd.args(["-NoProfile", "-NonInteractive", "-Command", &command]);
+        cmd.current_dir(resolved_dir);
+        cmd
+    };
     
     #[cfg(not(target_os = "windows"))]
-    let mut cmd = Command::new("sh");
-    #[cfg(not(target_os = "windows"))]
-    cmd.args(["-c", &command]);
+    let mut cmd = {
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", &command]);
+        cmd.current_dir(&working_dir);
+        cmd
+    };
 
     // Spawn the process
     let mut child = cmd
-        .current_dir(&working_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to spawn command: {}", e))?;
+        .map_err(|e| {
+            tracing::error!("Failed to spawn command '{}': {}", command, e);
+            format!("Failed to spawn command: {}", e)
+        })?;
+    
+    tracing::info!("Command '{}' spawned successfully", command);
+    
+    // Emit start event AFTER successful spawn
+    let _ = app.emit(
+        "command_started",
+        serde_json::json!({
+            "id": id,
+            "command_text": command,
+            "timestamp": timestamp
+        }),
+    );
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -141,7 +172,7 @@ pub async fn run_command_emit(
 
         // Try to wait for the process
         // Remove from map first, then drop the lock before awaiting
-        let mut child_opt = {
+        let child_opt = {
             let mut processes = RUNNING_PROCESSES.lock();
             processes.remove(&id)
         };
@@ -158,16 +189,19 @@ pub async fn run_command_emit(
         // Give time for stdout/stderr to finish
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-        // Update database with results
-        let stdout_str = stdout_final.lock().clone();
-        let stderr_str = stderr_final.lock().clone();
+        // Update database with results only if history was saved
+        // Check if ID is a valid database ID (positive and reasonable)
+        if id > 0 && id < 1000000000 {
+            let stdout_str = stdout_final.lock().clone();
+            let stderr_str = stderr_final.lock().clone();
 
-        let _ = db::update_command_history_output(
-            id,
-            Some(&stdout_str),
-            Some(&stderr_str),
-            Some(exit_code),
-        );
+            let _ = db::update_command_history_output(
+                id,
+                Some(&stdout_str),
+                Some(&stderr_str),
+                Some(exit_code),
+            );
+        }
 
         // Emit exit event
         let _ = app_exit.emit(
@@ -194,17 +228,33 @@ pub async fn run_command_sync(
     let working_dir = cwd.unwrap_or(".");
 
     #[cfg(target_os = "windows")]
-    let mut cmd = Command::new("powershell");
-    #[cfg(target_os = "windows")]
-    cmd.args(["-NoProfile", "-NonInteractive", "-Command", command]);
+    let mut cmd = {
+        // Resolve the working directory to an absolute path
+        let resolved_dir = if std::path::Path::new(working_dir).exists() {
+            std::path::Path::new(working_dir)
+                .canonicalize()
+                .unwrap_or_else(|_| std::path::Path::new(working_dir).to_path_buf())
+        } else {
+            // If directory doesn't exist, try to get parent or use current directory
+            std::env::current_dir()
+                .unwrap_or_else(|_| std::path::Path::new(working_dir).to_path_buf())
+        };
+        
+        let mut cmd = Command::new("powershell");
+        cmd.args(["-NoProfile", "-NonInteractive", "-Command", command]);
+        cmd.current_dir(resolved_dir);
+        cmd
+    };
     
     #[cfg(not(target_os = "windows"))]
-    let mut cmd = Command::new("sh");
-    #[cfg(not(target_os = "windows"))]
-    cmd.args(["-c", command]);
+    let mut cmd = {
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", command]);
+        cmd.current_dir(working_dir);
+        cmd
+    };
 
     let output = cmd
-        .current_dir(working_dir)
         .output()
         .await
         .map_err(|e| format!("Failed to execute command: {}", e))?;

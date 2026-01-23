@@ -3,7 +3,7 @@ use tauri::AppHandle;
 use crate::ai;
 use crate::context;
 use crate::db;
-use crate::models::*;
+use crate::models::{AiCommandResponse, AiErrorAnalysis, AiExplanation, AiSuggestion, CommandHandle, CommandHistory, Context, DangerWarning, Preference, SessionSummary, Workflow, WorkflowRunResult, WorkflowStep};
 use crate::redaction;
 use crate::runner;
 use crate::workflow;
@@ -43,13 +43,21 @@ pub async fn run_command(
     cwd: Option<String>,
     generated_by_ai: Option<bool>,
     force: Option<bool>,
+    save_history: Option<bool>,
+    session_id: Option<String>,
 ) -> Result<CommandHandle, String> {
-    // Check for dangerous commands
-    if let Some(warning) = redaction::validate_command(&command) {
-        if warning.severity == "high" && !force.unwrap_or(false) {
+    let force_flag = force.unwrap_or(false);
+    
+    // Check for dangerous commands - return warning for ALL severities when force is false
+    if !force_flag {
+        if let Some(warning) = redaction::validate_command(&command) {
+            // Return structured error that frontend can parse
+            // Format: "SECURITY_WARNING:reason:severity:command"
             return Err(format!(
-                "Dangerous command blocked: {}. Use force=true to override.",
-                warning.reason
+                "SECURITY_WARNING:{}:{}:{}",
+                warning.reason,
+                warning.severity,
+                warning.command
             ));
         }
     }
@@ -61,7 +69,11 @@ pub async fn run_command(
         );
     }
 
-    runner::run_command_emit(app, command, cwd, generated_by_ai.unwrap_or(false)).await
+    // Debug logging to verify IPC parameter receipt
+    tracing::info!("[IPC Debug] Received run_command with session_id: {:?}", session_id);
+    println!("[IPC Debug] Received run_command with session_id: {:?}", session_id);
+    
+    runner::run_command_emit(app, command, cwd, generated_by_ai.unwrap_or(false), save_history, session_id).await
 }
 
 /// Kill a running command
@@ -203,6 +215,38 @@ pub fn get_history(limit: Option<i32>, offset: Option<i32>) -> Result<Vec<Comman
     db::get_command_history(limit, offset).map_err(|e| e.to_string())
 }
 
+/// Get all sessions
+#[tauri::command]
+pub fn get_sessions() -> Result<Vec<SessionSummary>, String> {
+    db::get_sessions().map_err(|e| e.to_string())
+}
+
+/// Get all commands for a specific session
+#[tauri::command]
+pub fn get_session_content(session_id: String) -> Result<Vec<CommandHistory>, String> {
+    db::get_session_content(&session_id).map_err(|e| e.to_string())
+}
+
+// ============ Debug Commands ============
+
+/// Debug: Get total command count
+#[tauri::command]
+pub fn debug_get_command_count() -> Result<i64, String> {
+    db::debug_get_command_count().map_err(|e| e.to_string())
+}
+
+/// Debug: Get session count
+#[tauri::command]
+pub fn debug_get_session_count() -> Result<i64, String> {
+    db::debug_get_session_count().map_err(|e| e.to_string())
+}
+
+/// Debug: Get recent commands with their session_ids
+#[tauri::command]
+pub fn debug_get_recent_commands(limit: i32) -> Result<Vec<(Option<i64>, Option<String>, String)>, String> {
+    db::debug_get_recent_commands(limit).map_err(|e| e.to_string())
+}
+
 /// Get AI suggestions for a command
 #[tauri::command]
 pub fn get_suggestions_for_command(command_id: i64) -> Result<Vec<AiSuggestion>, String> {
@@ -245,6 +289,143 @@ pub fn is_interactive_command(command: String) -> bool {
 #[tauri::command]
 pub fn redact_sensitive(text: String) -> String {
     redaction::redact_sensitive(&text)
+}
+
+// ============ Authentication ============
+
+/// Register a new user
+#[tauri::command]
+pub fn register(email: String, password: String) -> Result<i64, String> {
+    if email.is_empty() || password.is_empty() {
+        return Err("Email and password are required".to_string());
+    }
+    
+    // Basic email validation
+    if !email.contains('@') || !email.contains('.') {
+        return Err("Invalid email format".to_string());
+    }
+    
+    // Password length check
+    if password.len() < 6 {
+        return Err("Password must be at least 6 characters".to_string());
+    }
+    
+    db::register_user(&email, &password).map_err(|e| e.to_string())
+}
+
+/// Login a user
+#[tauri::command]
+pub fn login(email: String, password: String) -> Result<i64, String> {
+    if email.is_empty() || password.is_empty() {
+        return Err("Email and password are required".to_string());
+    }
+    
+    db::login_user(&email, &password).map_err(|e| e.to_string())
+}
+
+/// Check if user is authenticated (for backend history saving)
+#[tauri::command]
+pub fn is_authenticated() -> bool {
+    // This is a simple check - in a real app, you'd verify a session token
+    // For now, we'll rely on frontend localStorage check
+    // Backend can't directly check localStorage, so we'll make history saving optional
+    true // Always return true, but we'll check on frontend before calling history functions
+}
+
+// ============ Path Utilities ============
+
+/// Get the system home directory
+#[tauri::command]
+pub fn get_home_directory() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows, use USERPROFILE environment variable
+        std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOMEDRIVE").and_then(|drive| {
+                std::env::var("HOMEPATH").map(|path| format!("{}{}", drive, path))
+            }))
+            .map_err(|e| format!("Failed to get home directory: {}", e))
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        // On Unix-like systems, use HOME environment variable
+        std::env::var("HOME")
+            .map_err(|e| format!("Failed to get home directory: {}", e))
+    }
+}
+
+/// Resolve a path relative to the current directory, canonicalizing it
+/// Returns the absolute path if it exists, or an error if it doesn't
+#[tauri::command]
+pub fn resolve_path(current: String, target: String) -> Result<String, String> {
+    use std::path::{Path, PathBuf};
+    
+    // Start with the current directory
+    let current_path = if current.is_empty() || current == "." {
+        std::env::current_dir()
+            .map_err(|e| format!("Failed to get current directory: {}", e))?
+    } else {
+        PathBuf::from(&current)
+            .canonicalize()
+            .map_err(|_| format!("Current directory does not exist: {}", current))?
+    };
+    
+    // Handle special cases
+    let target = target.trim();
+    
+    // Empty target or "." means current directory
+    if target.is_empty() || target == "." {
+        return Ok(current_path.to_string_lossy().to_string());
+    }
+    
+    // "~" means home directory
+    if target == "~" {
+        return get_home_directory();
+    }
+    
+    // "~/" means home directory with optional subpath
+    let target_path = if target.starts_with("~/") {
+        let home = get_home_directory()?;
+        PathBuf::from(home).join(&target[2..])
+    } else if target == ".." {
+        // Parent directory
+        current_path.parent()
+            .ok_or_else(|| "Cannot go above root directory".to_string())?
+            .to_path_buf()
+    } else if target.starts_with("..") {
+        // Relative path with ".."
+        let mut result = current_path.clone();
+        let parts: Vec<&str> = target.split('/').collect();
+        
+        for part in parts {
+            if part == ".." {
+                result = result.parent()
+                    .ok_or_else(|| "Cannot go above root directory".to_string())?
+                    .to_path_buf();
+            } else if !part.is_empty() && part != "." {
+                result.push(part);
+            }
+        }
+        result
+    } else if Path::new(&target).is_absolute() {
+        // Absolute path
+        PathBuf::from(target)
+    } else {
+        // Relative path
+        current_path.join(target)
+    };
+    
+    // Canonicalize the final path and check if it exists
+    let resolved = target_path.canonicalize()
+        .map_err(|e| format!("Path does not exist: {}", e))?;
+    
+    // Verify it's a directory
+    if !resolved.is_dir() {
+        return Err(format!("Path is not a directory: {}", resolved.to_string_lossy()));
+    }
+    
+    Ok(resolved.to_string_lossy().to_string())
 }
 
 

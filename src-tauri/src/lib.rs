@@ -24,6 +24,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Authentication
+            register,
+            login,
+            is_authenticated,
             // Natural Language
             nl_to_cmd,
             // Command Execution
@@ -33,6 +37,9 @@ pub fn run() {
             // Context
             get_context,
             find_project_root,
+            // Path Utilities
+            get_home_directory,
+            resolve_path,
             // AI Features
             analyze_error,
             explain_command,
@@ -50,7 +57,13 @@ pub fn run() {
             generate_workflow,
             // History & Preferences
             get_history,
+            get_sessions,
+            get_session_content,
             get_suggestions_for_command,
+            // Debug
+            debug_get_command_count,
+            debug_get_session_count,
+            debug_get_recent_commands,
             get_preference,
             set_preference,
             get_all_preferences,

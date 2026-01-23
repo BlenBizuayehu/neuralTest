@@ -178,6 +178,45 @@ body {
   transform: translateY(-1px);
 }
 
+.header-btn.logout-btn {
+  color: var(--accent-red);
+}
+
+.header-btn.logout-btn:hover {
+  background: var(--accent-red);
+  color: white;
+}
+
+.header-btn.login-btn {
+  color: var(--accent-green);
+}
+
+.header-btn.login-btn:hover {
+  background: var(--accent-green);
+  color: white;
+}
+
+/* Auth Modal Overlay */
+.auth-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.auth-modal {
+  width: 100%;
+  max-width: 450px;
+  margin: 20px;
+}
+
 /* Main Content */
 .app-main {
   flex: 1;

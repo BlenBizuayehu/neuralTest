@@ -34,6 +34,10 @@ static DANGEROUS_PATTERNS: Lazy<Vec<(Regex, &'static str, &'static str)>> = Lazy
     vec![
         // rm -rf / or similar
         (Regex::new(r"rm\s+(-[rRf]+\s+)*(/|/\*|\.\.|~/|~)").unwrap(), "Recursive delete of critical paths", "high"),
+        // Basic file deletion (Unix) - for testing
+        (Regex::new(r"(?i)^rm\s+[^-].*").unwrap(), "File deletion command", "medium"),
+        // Basic file deletion (Windows) - for testing
+        (Regex::new(r"(?i)^del\s+.+").unwrap(), "File deletion command", "medium"),
         // Fork bomb
         (Regex::new(r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;?\s*:").unwrap(), "Fork bomb detected", "high"),
         // Curl piped to shell
@@ -142,6 +146,31 @@ mod tests {
     fn test_dangerous_rm() {
         let warning = validate_command("rm -rf /");
         assert!(warning.is_some());
+        assert_eq!(warning.unwrap().severity, "high");
+    }
+
+    #[test]
+    fn test_basic_rm_deletion() {
+        let warning = validate_command("rm test.txt");
+        assert!(warning.is_some());
+        assert_eq!(warning.unwrap().severity, "medium");
+        assert_eq!(warning.unwrap().reason, "File deletion command");
+    }
+
+    #[test]
+    fn test_basic_del_deletion() {
+        let warning = validate_command("del test.txt");
+        assert!(warning.is_some());
+        assert_eq!(warning.unwrap().severity, "medium");
+        assert_eq!(warning.unwrap().reason, "File deletion command");
+    }
+
+    #[test]
+    fn test_rm_with_flags_not_caught_by_basic_pattern() {
+        // This should still be caught by the critical path pattern (high severity)
+        let warning = validate_command("rm -rf /");
+        assert!(warning.is_some());
+        // Should be caught by the more specific pattern first
         assert_eq!(warning.unwrap().severity, "high");
     }
 

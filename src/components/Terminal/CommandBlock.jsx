@@ -108,28 +108,26 @@ export default function CommandBlock({
         </div>
       )}
 
-      {/* Error Suggestion */}
+      {/* Error Suggestion - Tutor Style */}
       {suggestion && hasError && (
-        <div className="error-suggestion">
-          <div className="suggestion-header">
-            <span className="suggestion-icon">💡</span>
-            <span>AI Suggestion</span>
+        <div className="ai-error-suggestion">
+          <div className="ai-analysis-header">
+            <span className="ai-analysis-icon">✨</span>
+            <span className="ai-analysis-title">AI Analysis</span>
           </div>
-          <p className="explanation">{suggestion.explanation}</p>
-          {suggestion.fixes && suggestion.fixes.length > 0 && (
-            <div className="suggested-fixes">
-              <span className="fixes-label">Suggested fixes:</span>
-              {suggestion.fixes.map((fix, index) => (
-                <div key={index} className="fix-item">
-                  <code>{fix}</code>
-                  <button
-                    className="apply-fix-btn"
-                    onClick={() => onApplyFix?.(fix)}
-                  >
-                    Apply
-                  </button>
-                </div>
-              ))}
+          <p className="ai-explanation">{suggestion.explanation || 'The command encountered an error.'}</p>
+          {(suggestion.fix || (suggestion.fixes && suggestion.fixes.length > 0)) && (
+            <div className="ai-fix-container">
+              <code className="ai-fix-command">
+                {suggestion.fix || suggestion.fixes[0]}
+              </code>
+              <button
+                className="ai-run-fix-btn"
+                onClick={() => onApplyFix?.(suggestion.fix || suggestion.fixes[0])}
+                title="Run this fix"
+              >
+                ▶
+              </button>
             </div>
           )}
         </div>

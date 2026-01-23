@@ -4,7 +4,7 @@ use parking_lot::Mutex;
 use rusqlite::Connection;
 use std::path::PathBuf;
 
-use crate::models::{AiSuggestion, CommandHistory, Preference, Workflow};
+use crate::models::{AiSuggestion, CommandHistory, Preference, SessionSummary, Workflow};
 
 static DB: OnceCell<Mutex<Connection>> = OnceCell::new();
 
@@ -33,7 +33,8 @@ pub fn init_db() -> Result<()> {
             cwd TEXT,
             exit_code INTEGER,
             stdout TEXT,
-            stderr TEXT
+            stderr TEXT,
+            session_id TEXT
         );
 
         CREATE TABLE IF NOT EXISTS ai_suggestions (
@@ -60,10 +61,55 @@ pub fn init_db() -> Result<()> {
             value TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_commands_timestamp ON commands_history(timestamp);
         CREATE INDEX IF NOT EXISTS idx_ai_suggestions_created ON ai_suggestions(created_at);
+        CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
         "#,
     )?;
+
+    // Migration: Add session_id column if it doesn't exist
+    // Check if column exists by querying table info
+    let column_exists = {
+        let mut stmt = conn.prepare("PRAGMA table_info(commands_history)")?;
+        let rows = stmt.query_map([], |row| {
+            let name: String = row.get(1)?;
+            Ok(name)
+        })?;
+        let mut found = false;
+        for row in rows {
+            if let Ok(name) = row {
+                if name == "session_id" {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        found
+    };
+    
+    if !column_exists {
+        // Column doesn't exist, add it
+        conn.execute(
+            "ALTER TABLE commands_history ADD COLUMN session_id TEXT",
+            [],
+        )?;
+        tracing::info!("Added session_id column to commands_history");
+    }
+
+    // Create index on session_id (now that we know the column exists)
+    if let Err(e) = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_commands_session ON commands_history(session_id)",
+        [],
+    ) {
+        tracing::warn!("Failed to create session_id index (may already exist): {}", e);
+    }
 
     DB.set(Mutex::new(conn))
         .map_err(|_| anyhow::anyhow!("Database already initialized"))?;
@@ -81,16 +127,27 @@ fn get_db() -> &'static Mutex<Connection> {
 /// Insert a new command history entry (at start of execution)
 pub fn insert_command_history(cmd: &CommandHistory) -> Result<i64> {
     let conn = get_db().lock();
+    
+    // Debug logging
+    tracing::info!(
+        "Inserting command: '{}' with session_id: {:?}",
+        cmd.command_text,
+        cmd.session_id
+    );
+    
     conn.execute(
-        "INSERT INTO commands_history (timestamp, command_text, generated_by_ai, cwd) VALUES (?1, ?2, ?3, ?4)",
+        "INSERT INTO commands_history (timestamp, command_text, generated_by_ai, cwd, session_id) VALUES (?1, ?2, ?3, ?4, ?5)",
         (
             &cmd.timestamp,
             &cmd.command_text,
             cmd.generated_by_ai as i32,
             &cmd.cwd,
+            &cmd.session_id,
         ),
     )?;
-    Ok(conn.last_insert_rowid())
+    let id = conn.last_insert_rowid();
+    tracing::info!("Inserted command with id: {} and session_id: {:?}", id, cmd.session_id);
+    Ok(id)
 }
 
 /// Update command history with output and exit code
@@ -115,7 +172,7 @@ pub fn get_command_history(limit: Option<i32>, offset: Option<i32>) -> Result<Ve
     let offset = offset.unwrap_or(0);
 
     let mut stmt = conn.prepare(
-        "SELECT id, timestamp, command_text, generated_by_ai, cwd, exit_code, stdout, stderr 
+        "SELECT id, timestamp, command_text, generated_by_ai, cwd, exit_code, stdout, stderr, session_id 
          FROM commands_history ORDER BY timestamp DESC LIMIT ?1 OFFSET ?2",
     )?;
 
@@ -129,6 +186,7 @@ pub fn get_command_history(limit: Option<i32>, offset: Option<i32>) -> Result<Ve
             exit_code: row.get(5)?,
             stdout: row.get(6)?,
             stderr: row.get(7)?,
+            session_id: row.get(8)?,
         })
     })?;
 
@@ -137,6 +195,50 @@ pub fn get_command_history(limit: Option<i32>, offset: Option<i32>) -> Result<Ve
         history.push(row?);
     }
     Ok(history)
+}
+
+/// Debug: Get total count of commands in history
+pub fn debug_get_command_count() -> Result<i64> {
+    let conn = get_db().lock();
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM commands_history",
+        [],
+        |row| row.get(0),
+    )?;
+    Ok(count)
+}
+
+/// Debug: Get count of commands with session_id
+pub fn debug_get_session_count() -> Result<i64> {
+    let conn = get_db().lock();
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM commands_history WHERE session_id IS NOT NULL",
+        [],
+        |row| row.get(0),
+    )?;
+    Ok(count)
+}
+
+/// Debug: Get sample of recent commands
+pub fn debug_get_recent_commands(limit: i32) -> Result<Vec<(Option<i64>, Option<String>, String)>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, session_id, command_text FROM commands_history ORDER BY id DESC LIMIT ?1",
+    )?;
+    
+    let rows = stmt.query_map([limit], |row| {
+        Ok((
+            row.get(0)?,
+            row.get(1)?,
+            row.get(2)?,
+        ))
+    })?;
+    
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row?);
+    }
+    Ok(results)
 }
 
 // ============ AI Suggestions Operations ============
@@ -279,6 +381,136 @@ pub fn get_all_preferences() -> Result<Vec<Preference>> {
         prefs.push(row?);
     }
     Ok(prefs)
+}
+
+// ============ Session Operations ============
+
+/// Get all unique sessions with their summary information
+pub fn get_sessions() -> Result<Vec<SessionSummary>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT 
+            session_id,
+            MIN(timestamp) as start_time,
+            (SELECT command_text FROM commands_history ch2 
+             WHERE ch2.session_id = ch1.session_id 
+             ORDER BY id ASC LIMIT 1) as title
+        FROM commands_history ch1
+        WHERE session_id IS NOT NULL
+        GROUP BY session_id
+        ORDER BY start_time DESC
+        "#,
+    )?;
+
+    let rows = stmt.query_map([], |row| {
+        Ok(SessionSummary {
+            session_id: row.get(0)?,
+            start_time: row.get(1)?,
+            title: row.get(2)?,
+        })
+    })?;
+
+    let mut sessions = Vec::new();
+    for row in rows {
+        sessions.push(row?);
+    }
+    Ok(sessions)
+}
+
+/// Get all commands for a specific session
+pub fn get_session_content(session_id: &str) -> Result<Vec<CommandHistory>> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, timestamp, command_text, generated_by_ai, cwd, exit_code, stdout, stderr, session_id 
+         FROM commands_history 
+         WHERE session_id = ?1 
+         ORDER BY timestamp ASC",
+    )?;
+
+    let rows = stmt.query_map([session_id], |row| {
+        Ok(CommandHistory {
+            id: Some(row.get(0)?),
+            timestamp: row.get(1)?,
+            command_text: row.get(2)?,
+            generated_by_ai: row.get::<_, i32>(3)? != 0,
+            cwd: row.get(4)?,
+            exit_code: row.get(5)?,
+            stdout: row.get(6)?,
+            stderr: row.get(7)?,
+            session_id: row.get(8)?,
+        })
+    })?;
+
+    let mut history = Vec::new();
+    for row in rows {
+        history.push(row?);
+    }
+    Ok(history)
+}
+
+// ============ User Authentication Operations ============
+
+/// Register a new user
+pub fn register_user(email: &str, password: &str) -> Result<i64> {
+    // Simple password hashing (for prototype - in production use bcrypt or argon2)
+    // Using a simple hash for this prototype
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    
+    let mut hasher = DefaultHasher::new();
+    password.hash(&mut hasher);
+    let password_hash = format!("{:x}", hasher.finish());
+    
+    let created_at = chrono::Utc::now().to_rfc3339();
+    
+    let conn = get_db().lock();
+    match conn.execute(
+        "INSERT INTO users (email, password_hash, created_at) VALUES (?1, ?2, ?3)",
+        (email, password_hash, created_at),
+    ) {
+        Ok(_) => Ok(conn.last_insert_rowid()),
+        Err(rusqlite::Error::SqliteFailure(err, _)) => {
+            // Check if it's a constraint violation (unique constraint on email)
+            if err.to_string().contains("UNIQUE constraint") || err.to_string().contains("constraint") {
+                Err(anyhow::anyhow!("Email already registered"))
+            } else {
+                Err(err.into())
+            }
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Login a user and return their ID
+pub fn login_user(email: &str, password: &str) -> Result<i64> {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    
+    let mut hasher = DefaultHasher::new();
+    password.hash(&mut hasher);
+    let password_hash = format!("{:x}", hasher.finish());
+    
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare("SELECT id, password_hash FROM users WHERE email = ?1")?;
+    
+    let result = stmt.query_row([email], |row| {
+        let id: i64 = row.get(0)?;
+        let stored_hash: String = row.get(1)?;
+        Ok((id, stored_hash))
+    });
+    
+    match result {
+        Ok((id, stored_hash)) => {
+            if stored_hash == password_hash {
+                Ok(id)
+            } else {
+                Err(anyhow::anyhow!("Invalid password"))
+            }
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => Err(anyhow::anyhow!("User not found")),
+        Err(e) => Err(e.into()),
+    }
 }
 
 

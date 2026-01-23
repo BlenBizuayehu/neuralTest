@@ -11,6 +11,15 @@ pub struct CommandHistory {
     pub exit_code: Option<i32>,
     pub stdout: Option<String>,
     pub stderr: Option<String>,
+    pub session_id: Option<String>,
+}
+
+/// Session summary for history sidebar
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionSummary {
+    pub session_id: String,
+    pub start_time: String,
+    pub title: String,
 }
 
 /// AI suggestion entry
@@ -96,7 +105,11 @@ pub struct AiCommandResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiErrorAnalysis {
     pub explanation: String,
-    pub fixes: Vec<String>,
+    #[serde(default)]
+    pub fix: Option<String>, // Single fix command (new format)
+    #[serde(default)]
+    pub fixes: Vec<String>, // Multiple fixes (legacy format)
+    #[serde(default)]
     pub confidence: Option<f32>,
 }
 

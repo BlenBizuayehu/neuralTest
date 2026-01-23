@@ -393,21 +393,26 @@ pub async fn analyze_error(
     let context = cwd.map(scan_context).unwrap_or_default();
     let context_str = build_context_string(&context);
 
-    let system_prompt = r#"You are an experienced developer helping debug errors.
+    let system_prompt = r#"You are a patient tutor helping users understand and fix shell errors.
 
 Rules:
-1. Output ONLY valid JSON: {"explanation": "...", "fixes": ["cmd1", "cmd2"], "confidence": 0.9}
-2. Explanation should be beginner-friendly
-3. Fixes should be concrete shell commands that solve the problem
-4. Order fixes by likelihood of success
-5. Confidence is 0.0-1.0 based on how certain you are about the fix"#;
+1. Output ONLY valid JSON with this exact structure: {"explanation": "<brief, friendly explanation>", "fix": "<executable shell command>", "confidence": "<high|medium|low>"}
+2. Do NOT use Markdown code blocks for the JSON. Return raw JSON only.
+3. Explanation should be concise and beginner-friendly (1-2 sentences). Explain what went wrong in simple terms.
+4. Fix should be a single, concrete shell command that solves the problem.
+5. Confidence should be "high" if you're very sure, "medium" if somewhat sure, "low" if uncertain.
+6. Be helpful and encouraging, like a teacher explaining to a student."#;
 
     let user_prompt = format!(
         "Command that failed: {}\nExit code: {}\nError output:\n{}\n\nContext: {}",
         redacted_command, exit_code, redacted_stderr, context_str
     );
 
-    let response = call_ai(system_prompt, &user_prompt).await?;
+    let response = call_ai(system_prompt, &user_prompt).await
+        .map_err(|e| {
+            tracing::error!("AI API call failed: {}", e);
+            format!("AI API error: {}", e)
+        })?;
 
     // Parse JSON response
     let cleaned = response.trim();
@@ -421,8 +426,22 @@ Rules:
         cleaned
     };
 
-    let analysis: AiErrorAnalysis = serde_json::from_str(json_str)
-        .map_err(|e| format!("Failed to parse AI response: {}", e))?;
+    // Log the raw response for debugging
+    tracing::debug!("AI raw response (first 500 chars): {}", &json_str.chars().take(500).collect::<String>());
+
+    let mut analysis: AiErrorAnalysis = serde_json::from_str(json_str)
+        .map_err(|e| {
+            tracing::error!("Failed to parse AI JSON response: {}", e);
+            tracing::error!("Response was: {}", json_str);
+            format!("Failed to parse AI response as JSON: {}. Raw response: {}", e, json_str.chars().take(200).collect::<String>())
+        })?;
+
+    // Normalize: If we have `fix` but no `fixes`, populate `fixes` for backward compatibility
+    if let Some(ref fix) = analysis.fix {
+        if analysis.fixes.is_empty() {
+            analysis.fixes = vec![fix.clone()];
+        }
+    }
 
     // Save suggestion to database
     let suggestion = AiSuggestion {
