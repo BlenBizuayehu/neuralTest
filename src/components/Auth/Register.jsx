@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import './Auth.css';
 import { register } from '../../services/tauriClient';
+import EmailVerificationModal from './EmailVerificationModal';
 
 /**
  * Register - User registration component
@@ -11,6 +12,9 @@ export default function Register({ onRegister, onSwitchToLogin }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showVerification, setShowVerification] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [userId, setUserId] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -30,20 +34,33 @@ export default function Register({ onRegister, onSwitchToLogin }) {
     setIsLoading(true);
 
     try {
-      const userId = await register(email, password);
+      const result = await register(email, password);
+      // Result is [userId, verificationCode]
+      const [id, code] = Array.isArray(result) ? result : [result, null];
       
-      // Store authentication state in localStorage
-      localStorage.setItem('isAuthenticated', 'true');
-      localStorage.setItem('userId', userId.toString());
-      localStorage.setItem('userEmail', email);
-      
-      onRegister?.(userId);
+      setUserId(id);
+      setVerificationCode(code || '');
+      setShowVerification(true);
     } catch (err) {
       console.error('Registration error:', err);
       setError(err.toString() || 'Registration failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleVerified = () => {
+    // User verified - complete registration
+    const userData = {
+      id: userId,
+      email,
+      isVerified: true,
+    };
+    localStorage.setItem('user', JSON.stringify(userData));
+    localStorage.setItem('userId', userId.toString());
+    localStorage.setItem('userEmail', email);
+    onRegister?.(userData);
+    setShowVerification(false);
   };
 
   return (
@@ -135,6 +152,28 @@ export default function Register({ onRegister, onSwitchToLogin }) {
           </p>
         </div>
       </div>
+
+      {/* Email Verification Modal */}
+      {showVerification && (
+        <EmailVerificationModal
+          email={email}
+          verificationCode={verificationCode}
+          onVerified={handleVerified}
+          onClose={() => {
+            // Allow skipping verification (user can verify later)
+            const userData = {
+              id: userId,
+              email,
+              isVerified: false,
+            };
+            localStorage.setItem('user', JSON.stringify(userData));
+            localStorage.setItem('userId', userId.toString());
+            localStorage.setItem('userEmail', email);
+            onRegister?.(userData);
+            setShowVerification(false);
+          }}
+        />
+      )}
     </div>
   );
 }

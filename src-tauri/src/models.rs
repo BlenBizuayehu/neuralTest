@@ -12,6 +12,8 @@ pub struct CommandHistory {
     pub stdout: Option<String>,
     pub stderr: Option<String>,
     pub session_id: Option<String>,
+    #[serde(default)]
+    pub user_id: Option<i32>,
 }
 
 /// Session summary for history sidebar
@@ -63,6 +65,13 @@ pub struct Preference {
     pub value: String,
 }
 
+/// NPM script entry with command
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NpmScript {
+    pub name: String,
+    pub command: String,
+}
+
 /// Project context information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Context {
@@ -70,10 +79,22 @@ pub struct Context {
     pub has_package_json: bool,
     pub has_cargo_toml: bool,
     pub has_requirements_txt: bool,
+    pub has_pipfile: bool,
+    pub has_pyproject_toml: bool,
     pub has_manage_py: bool,
     pub has_composer_json: bool,
+    pub has_pom_xml: bool,
+    pub has_build_gradle: bool,
+    pub has_build_gradle_kts: bool,
+    pub has_go_mod: bool,
     pub has_git: bool,
-    pub npm_scripts: Option<Vec<String>>,
+    pub has_dockerfile: bool,
+    pub has_docker_compose: bool,
+    pub has_makefile: bool,
+    pub npm_scripts: Option<Vec<String>>, // Legacy: just script names
+    pub npm_scripts_detailed: Option<Vec<NpmScript>>, // New: names with commands
+    pub cargo_binaries: Option<Vec<String>>,
+    pub makefile_targets: Option<Vec<String>>,
     pub cwd: String,
 }
 
@@ -84,10 +105,22 @@ impl Default for Context {
             has_package_json: false,
             has_cargo_toml: false,
             has_requirements_txt: false,
+            has_pipfile: false,
+            has_pyproject_toml: false,
             has_manage_py: false,
             has_composer_json: false,
+            has_pom_xml: false,
+            has_build_gradle: false,
+            has_build_gradle_kts: false,
+            has_go_mod: false,
             has_git: false,
+            has_dockerfile: false,
+            has_docker_compose: false,
+            has_makefile: false,
             npm_scripts: None,
+            npm_scripts_detailed: None,
+            cargo_binaries: None,
+            makefile_targets: None,
             cwd: String::new(),
         }
     }

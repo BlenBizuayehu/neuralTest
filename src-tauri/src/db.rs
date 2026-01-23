@@ -4,6 +4,7 @@ use parking_lot::Mutex;
 use rusqlite::Connection;
 use std::path::PathBuf;
 
+use crate::email;
 use crate::models::{AiSuggestion, CommandHistory, Preference, SessionSummary, Workflow};
 
 static DB: OnceCell<Mutex<Connection>> = OnceCell::new();
@@ -65,7 +66,9 @@ pub fn init_db() -> Result<()> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            is_verified INTEGER DEFAULT 0,
+            verification_code TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_commands_timestamp ON commands_history(timestamp);
@@ -111,6 +114,94 @@ pub fn init_db() -> Result<()> {
         tracing::warn!("Failed to create session_id index (may already exist): {}", e);
     }
 
+    // Migration: Add user_id column to commands_history if it doesn't exist
+    let user_id_exists = {
+        let mut stmt = conn.prepare("PRAGMA table_info(commands_history)")?;
+        let rows = stmt.query_map([], |row| {
+            let name: String = row.get(1)?;
+            Ok(name)
+        })?;
+        let mut found = false;
+        for row in rows {
+            if let Ok(name) = row {
+                if name == "user_id" {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        found
+    };
+    
+    if !user_id_exists {
+        conn.execute(
+            "ALTER TABLE commands_history ADD COLUMN user_id INTEGER",
+            [],
+        )?;
+        tracing::info!("Added user_id column to commands_history");
+    }
+
+    // Migration: Add is_verified and verification_code to users if they don't exist
+    let is_verified_exists = {
+        let mut stmt = conn.prepare("PRAGMA table_info(users)")?;
+        let rows = stmt.query_map([], |row| {
+            let name: String = row.get(1)?;
+            Ok(name)
+        })?;
+        let mut found = false;
+        for row in rows {
+            if let Ok(name) = row {
+                if name == "is_verified" {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        found
+    };
+    
+    if !is_verified_exists {
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0",
+            [],
+        )?;
+        tracing::info!("Added is_verified column to users");
+    }
+
+    let verification_code_exists = {
+        let mut stmt = conn.prepare("PRAGMA table_info(users)")?;
+        let rows = stmt.query_map([], |row| {
+            let name: String = row.get(1)?;
+            Ok(name)
+        })?;
+        let mut found = false;
+        for row in rows {
+            if let Ok(name) = row {
+                if name == "verification_code" {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        found
+    };
+    
+    if !verification_code_exists {
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN verification_code TEXT",
+            [],
+        )?;
+        tracing::info!("Added verification_code column to users");
+    }
+
+    // Create index on user_id for faster queries
+    if let Err(e) = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_commands_user ON commands_history(user_id)",
+        [],
+    ) {
+        tracing::warn!("Failed to create user_id index (may already exist): {}", e);
+    }
+
     DB.set(Mutex::new(conn))
         .map_err(|_| anyhow::anyhow!("Database already initialized"))?;
 
@@ -125,28 +216,41 @@ fn get_db() -> &'static Mutex<Connection> {
 // ============ Command History Operations ============
 
 /// Insert a new command history entry (at start of execution)
+/// If user_id is None (Guest mode), skip insertion and return a temporary ID
 pub fn insert_command_history(cmd: &CommandHistory) -> Result<i64> {
+    // Guest Mode: If user_id is None, do NOT save to database
+    if cmd.user_id.is_none() {
+        tracing::info!(
+            "Guest mode: Skipping database insertion for command: '{}'",
+            cmd.command_text
+        );
+        // Return a temporary ID based on timestamp for non-persisted commands
+        return Ok(cmd.timestamp.parse::<i64>().unwrap_or(0) % 1000000000);
+    }
+
     let conn = get_db().lock();
     
     // Debug logging
     tracing::info!(
-        "Inserting command: '{}' with session_id: {:?}",
+        "Inserting command: '{}' with session_id: {:?}, user_id: {:?}",
         cmd.command_text,
-        cmd.session_id
+        cmd.session_id,
+        cmd.user_id
     );
     
     conn.execute(
-        "INSERT INTO commands_history (timestamp, command_text, generated_by_ai, cwd, session_id) VALUES (?1, ?2, ?3, ?4, ?5)",
+        "INSERT INTO commands_history (timestamp, command_text, generated_by_ai, cwd, session_id, user_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         (
             &cmd.timestamp,
             &cmd.command_text,
             cmd.generated_by_ai as i32,
             &cmd.cwd,
             &cmd.session_id,
+            &cmd.user_id,
         ),
     )?;
     let id = conn.last_insert_rowid();
-    tracing::info!("Inserted command with id: {} and session_id: {:?}", id, cmd.session_id);
+    tracing::info!("Inserted command with id: {}, session_id: {:?}, user_id: {:?}", id, cmd.session_id, cmd.user_id);
     Ok(id)
 }
 
@@ -172,7 +276,7 @@ pub fn get_command_history(limit: Option<i32>, offset: Option<i32>) -> Result<Ve
     let offset = offset.unwrap_or(0);
 
     let mut stmt = conn.prepare(
-        "SELECT id, timestamp, command_text, generated_by_ai, cwd, exit_code, stdout, stderr, session_id 
+        "SELECT id, timestamp, command_text, generated_by_ai, cwd, exit_code, stdout, stderr, session_id, user_id 
          FROM commands_history ORDER BY timestamp DESC LIMIT ?1 OFFSET ?2",
     )?;
 
@@ -187,6 +291,7 @@ pub fn get_command_history(limit: Option<i32>, offset: Option<i32>) -> Result<Ve
             stdout: row.get(6)?,
             stderr: row.get(7)?,
             session_id: row.get(8)?,
+            user_id: row.get(9)?,
         })
     })?;
 
@@ -385,8 +490,8 @@ pub fn get_all_preferences() -> Result<Vec<Preference>> {
 
 // ============ Session Operations ============
 
-/// Get all unique sessions with their summary information
-pub fn get_sessions() -> Result<Vec<SessionSummary>> {
+/// Get all unique sessions with their summary information for a specific user
+pub fn get_sessions(user_id: i32) -> Result<Vec<SessionSummary>> {
     let conn = get_db().lock();
     let mut stmt = conn.prepare(
         r#"
@@ -397,13 +502,13 @@ pub fn get_sessions() -> Result<Vec<SessionSummary>> {
              WHERE ch2.session_id = ch1.session_id 
              ORDER BY id ASC LIMIT 1) as title
         FROM commands_history ch1
-        WHERE session_id IS NOT NULL
+        WHERE session_id IS NOT NULL AND user_id = ?1
         GROUP BY session_id
         ORDER BY start_time DESC
         "#,
     )?;
 
-    let rows = stmt.query_map([], |row| {
+    let rows = stmt.query_map([user_id], |row| {
         Ok(SessionSummary {
             session_id: row.get(0)?,
             start_time: row.get(1)?,
@@ -422,7 +527,7 @@ pub fn get_sessions() -> Result<Vec<SessionSummary>> {
 pub fn get_session_content(session_id: &str) -> Result<Vec<CommandHistory>> {
     let conn = get_db().lock();
     let mut stmt = conn.prepare(
-        "SELECT id, timestamp, command_text, generated_by_ai, cwd, exit_code, stdout, stderr, session_id 
+        "SELECT id, timestamp, command_text, generated_by_ai, cwd, exit_code, stdout, stderr, session_id, user_id 
          FROM commands_history 
          WHERE session_id = ?1 
          ORDER BY timestamp ASC",
@@ -439,6 +544,7 @@ pub fn get_session_content(session_id: &str) -> Result<Vec<CommandHistory>> {
             stdout: row.get(6)?,
             stderr: row.get(7)?,
             session_id: row.get(8)?,
+            user_id: row.get(9)?,
         })
     })?;
 
@@ -452,38 +558,63 @@ pub fn get_session_content(session_id: &str) -> Result<Vec<CommandHistory>> {
 // ============ User Authentication Operations ============
 
 /// Register a new user
-pub fn register_user(email: &str, password: &str) -> Result<i64> {
+/// CRITICAL: Email is sent BEFORE user is created. If email fails, user is NOT created.
+pub async fn register_user(email: &str, password: &str) -> Result<(i64, String)> {
+    // Phase 1: Check if user already exists - Lock is dropped at end of block
+    {
+        let conn = get_db().lock();
+        let mut stmt = conn.prepare("SELECT id FROM users WHERE email = ?1")?;
+        if stmt.exists([email])? {
+            return Err(anyhow::anyhow!("Email already registered"));
+        }
+    } // Lock dropped here
+    
+    // Phase 2: Prepare user data (no DB lock needed)
     // Simple password hashing (for prototype - in production use bcrypt or argon2)
-    // Using a simple hash for this prototype
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     
     let mut hasher = DefaultHasher::new();
     password.hash(&mut hasher);
     let password_hash = format!("{:x}", hasher.finish());
+    
+    // Generate 6-digit verification code
+    use rand::Rng;
+    let verification_code = format!("{:06}", rand::thread_rng().gen_range(100000..999999));
     
     let created_at = chrono::Utc::now().to_rfc3339();
     
-    let conn = get_db().lock();
-    match conn.execute(
-        "INSERT INTO users (email, password_hash, created_at) VALUES (?1, ?2, ?3)",
-        (email, password_hash, created_at),
-    ) {
-        Ok(_) => Ok(conn.last_insert_rowid()),
-        Err(rusqlite::Error::SqliteFailure(err, _)) => {
-            // Check if it's a constraint violation (unique constraint on email)
-            if err.to_string().contains("UNIQUE constraint") || err.to_string().contains("constraint") {
-                Err(anyhow::anyhow!("Email already registered"))
-            } else {
-                Err(err.into())
+    // Phase 3: Network IO (Send Email) - NO DB LOCK HELD HERE
+    // CRITICAL: If email fails, user is NOT created
+    email::send_verification_email(email, &verification_code)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to send email: {}", e))?;
+    
+    // Phase 4: DB Write (Insert user) - Only happens if email succeeded
+    let user_id = {
+        let conn = get_db().lock();
+        match conn.execute(
+            "INSERT INTO users (email, password_hash, created_at, is_verified, verification_code) VALUES (?1, ?2, ?3, 0, ?4)",
+            (email, password_hash, created_at, verification_code.as_str()),
+        ) {
+            Ok(_) => conn.last_insert_rowid(),
+            Err(rusqlite::Error::SqliteFailure(err, _)) => {
+                // This should not happen if we checked above, but handle it anyway
+                if err.to_string().contains("UNIQUE constraint") || err.to_string().contains("constraint") {
+                    return Err(anyhow::anyhow!("Email already registered"));
+                } else {
+                    return Err(err.into());
+                }
             }
+            Err(e) => return Err(e.into()),
         }
-        Err(e) => Err(e.into()),
-    }
+    }; // Lock dropped here
+    
+    Ok((user_id, verification_code))
 }
 
-/// Login a user and return their ID
-pub fn login_user(email: &str, password: &str) -> Result<i64> {
+/// Login a user and return their ID and verification status
+pub fn login_user(email: &str, password: &str) -> Result<(i64, bool)> {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     
@@ -492,22 +623,144 @@ pub fn login_user(email: &str, password: &str) -> Result<i64> {
     let password_hash = format!("{:x}", hasher.finish());
     
     let conn = get_db().lock();
-    let mut stmt = conn.prepare("SELECT id, password_hash FROM users WHERE email = ?1")?;
+    let mut stmt = conn.prepare("SELECT id, password_hash, is_verified FROM users WHERE email = ?1")?;
     
     let result = stmt.query_row([email], |row| {
         let id: i64 = row.get(0)?;
         let stored_hash: String = row.get(1)?;
-        Ok((id, stored_hash))
+        let is_verified: i32 = row.get(2)?;
+        Ok((id, stored_hash, is_verified != 0))
     });
     
     match result {
-        Ok((id, stored_hash)) => {
+        Ok((id, stored_hash, is_verified)) => {
             if stored_hash == password_hash {
-                Ok(id)
+                Ok((id, is_verified))
             } else {
                 Err(anyhow::anyhow!("Invalid password"))
             }
         }
+        Err(rusqlite::Error::QueryReturnedNoRows) => Err(anyhow::anyhow!("User not found")),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Verify email with code
+pub fn verify_email(email: &str, code: &str) -> Result<bool> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare("SELECT verification_code FROM users WHERE email = ?1")?;
+    
+    let result = stmt.query_row([email], |row| {
+        let stored_code: Option<String> = row.get(0)?;
+        Ok(stored_code)
+    });
+    
+    match result {
+        Ok(Some(stored_code)) => {
+            if stored_code == code {
+                // Mark as verified and clear code
+                conn.execute(
+                    "UPDATE users SET is_verified = 1, verification_code = NULL WHERE email = ?1",
+                    [email],
+                )?;
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
+        Ok(None) => Ok(false),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Err(anyhow::anyhow!("User not found")),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Generate password reset code
+/// CRITICAL: Email is sent BEFORE code is saved. If email fails, code is NOT saved.
+pub async fn generate_reset_code(email: &str) -> Result<String> {
+    // Phase 1: DB Read (Check if user exists) - Lock is dropped at end of block
+    {
+        let conn = get_db().lock();
+        let mut stmt = conn.prepare("SELECT id FROM users WHERE email = ?1")?;
+        let user_exists = stmt.exists([email])?;
+        
+        if !user_exists {
+            return Err(anyhow::anyhow!("User not found"));
+        }
+    } // Lock dropped here
+    
+    // Phase 2: Generate 6-digit reset code (no lock needed)
+    use rand::Rng;
+    let reset_code = format!("{:06}", rand::thread_rng().gen_range(100000..999999));
+    
+    // Phase 3: Network IO (Send Email) - NO DB LOCK HELD HERE
+    // CRITICAL: If email fails, code is NOT saved to database
+    email::send_verification_email(email, &reset_code)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to send email: {}", e))?;
+    
+    // Phase 4: DB Write (Store reset code) - Only happens if email succeeded
+    {
+        let conn = get_db().lock();
+        conn.execute(
+            "UPDATE users SET verification_code = ?1 WHERE email = ?2",
+            (reset_code.as_str(), email),
+        )?;
+    } // Lock dropped here
+    
+    Ok(reset_code)
+}
+
+/// Verify reset code (without resetting password)
+pub fn verify_reset_code(email: &str, code: &str) -> Result<bool> {
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare("SELECT verification_code FROM users WHERE email = ?1")?;
+    
+    let result = stmt.query_row([email], |row| {
+        let stored_code: Option<String> = row.get(0)?;
+        Ok(stored_code)
+    });
+    
+    match result {
+        Ok(Some(stored_code)) => {
+            Ok(stored_code == code)
+        }
+        Ok(None) => Ok(false),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Err(anyhow::anyhow!("User not found")),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Reset password with code
+pub fn reset_password(email: &str, code: &str, new_password: &str) -> Result<()> {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    
+    let mut hasher = DefaultHasher::new();
+    new_password.hash(&mut hasher);
+    let password_hash = format!("{:x}", hasher.finish());
+    
+    let conn = get_db().lock();
+    let mut stmt = conn.prepare("SELECT verification_code FROM users WHERE email = ?1")?;
+    
+    let result = stmt.query_row([email], |row| {
+        let stored_code: Option<String> = row.get(0)?;
+        Ok(stored_code)
+    });
+    
+    match result {
+        Ok(Some(stored_code)) => {
+            if stored_code == code {
+                // Update password and clear reset code
+                conn.execute(
+                    "UPDATE users SET password_hash = ?1, verification_code = NULL WHERE email = ?2",
+                    (password_hash, email),
+                )?;
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("Invalid reset code"))
+            }
+        }
+        Ok(None) => Err(anyhow::anyhow!("No reset code found. Please request a new one.")),
         Err(rusqlite::Error::QueryReturnedNoRows) => Err(anyhow::anyhow!("User not found")),
         Err(e) => Err(e.into()),
     }

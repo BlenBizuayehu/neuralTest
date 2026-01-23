@@ -73,6 +73,32 @@
   color: var(--text-primary, #c0caf5);
 }
 
+.history-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-new-session-btn {
+  background: var(--accent-color, #7aa2f7);
+  border: none;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.history-new-session-btn:hover {
+  background: var(--accent-hover, #6a8fd8);
+  transform: scale(1.05);
+}
+
 .history-close-btn {
   background: none;
   border: none;

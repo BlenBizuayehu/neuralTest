@@ -126,6 +126,45 @@
   background: var(--stderr-bg, rgba(247, 118, 142, 0.1));
 }
 
+.output-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.command-output:hover .output-actions {
+  opacity: 1;
+}
+
+.output-action-btn {
+  background: var(--btn-bg, #2a2b3d);
+  border: none;
+  color: var(--text-muted, #565f89);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.output-action-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.output-action-btn:hover {
+  background: var(--btn-hover-bg, #3d3e52);
+  color: var(--text-primary, #c0caf5);
+}
+
+/* Legacy class for backward compatibility */
 .copy-output-btn {
   position: absolute;
   top: 8px;

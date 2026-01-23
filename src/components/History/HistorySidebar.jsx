@@ -5,7 +5,7 @@ import './HistorySidebar.css';
 /**
  * HistorySidebar - Sliding sidebar for session history
  */
-export default function HistorySidebar({ isOpen, onClose, onSelectCommand, onSelectSession, currentSessionId, refreshTrigger }) {
+export default function HistorySidebar({ isOpen, onClose, onSelectCommand, onSelectSession, currentSessionId, refreshTrigger, onNewSession }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [sessions, setSessions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -174,9 +174,20 @@ export default function HistorySidebar({ isOpen, onClose, onSelectCommand, onSel
             <span className="history-header-icon">🕐</span>
             <h3>Sessions</h3>
           </div>
-          <button className="history-close-btn" onClick={onClose} title="Close (Esc)">
-            ✕
-          </button>
+          <div className="history-header-actions">
+            {onNewSession && (
+              <button 
+                className="history-new-session-btn" 
+                onClick={onNewSession} 
+                title="New Chat (Start a new session)"
+              >
+                ➕
+              </button>
+            )}
+            <button className="history-close-btn" onClick={onClose} title="Close (Esc)">
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Search Input */}

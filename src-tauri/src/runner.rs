@@ -22,16 +22,17 @@ pub async fn run_command_emit(
     command: String,
     cwd: Option<String>,
     generated_by_ai: bool,
-    save_history: Option<bool>,
+    _save_history: Option<bool>,
     session_id: Option<String>,
+    user_id: Option<i32>,
 ) -> Result<CommandHandle, String> {
     let timestamp = Utc::now().to_rfc3339();
     let working_dir = cwd.clone().unwrap_or_else(|| ".".to_string());
 
-    // Save history if explicitly requested OR if session_id is provided (session-based persistence)
-    let should_save = save_history.unwrap_or(false) || session_id.is_some();
-    let id = if should_save {
-        // Create initial history entry
+    // Guest Mode: If user_id is None, do NOT save to database (ephemeral)
+    // User Mode: If user_id is Some, save to database with user_id
+    let id = if user_id.is_some() {
+        // Create initial history entry with user_id
         let history = CommandHistory {
             id: None,
             timestamp: timestamp.clone(),
@@ -42,10 +43,11 @@ pub async fn run_command_emit(
             stdout: None,
             stderr: None,
             session_id: session_id.clone(),
+            user_id,
         };
         db::insert_command_history(&history).map_err(|e| e.to_string())?
     } else {
-        // Use timestamp as ID for non-persisted commands
+        // Guest mode: Use timestamp as ID for non-persisted commands
         timestamp.parse::<i64>().unwrap_or(0) % 1000000000
     };
 

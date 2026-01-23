@@ -2,6 +2,7 @@ mod ai;
 mod commands;
 mod context;
 mod db;
+mod email;
 mod models;
 mod redaction;
 mod runner;
@@ -27,6 +28,10 @@ pub fn run() {
             // Authentication
             register,
             login,
+            verify_email,
+            request_password_reset,
+            verify_reset_code,
+            reset_password,
             is_authenticated,
             // Natural Language
             nl_to_cmd,
@@ -47,6 +52,7 @@ pub fn run() {
             set_api_key,
             set_gemini_api_key,
             set_openai_api_key,
+            set_groq_api_key,
             set_ai_provider,
             set_ai_model,
             clear_api_key,

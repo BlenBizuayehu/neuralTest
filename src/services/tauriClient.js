@@ -107,10 +107,11 @@ export async function nlToCmd(text, cwd = null) {
 /**
  * Run a shell command
  */
-export async function runCommand(command, cwd = null, generatedByAi = false, force = false, saveHistory = null, sessionId = null) {
-  // If saveHistory is null, check localStorage for auth status
-  if (saveHistory === null) {
-    saveHistory = localStorage.getItem('isAuthenticated') === 'true';
+export async function runCommand(command, cwd = null, generatedByAi = false, force = false, saveHistory = null, sessionId = null, userId = null) {
+  // Get user_id from localStorage if not provided
+  if (userId === null) {
+    const storedUserId = localStorage.getItem('userId');
+    userId = storedUserId ? parseInt(storedUserId, 10) : null;
   }
   
   // Defensive strategy: Ensure sessionId is always provided
@@ -145,6 +146,7 @@ export async function runCommand(command, cwd = null, generatedByAi = false, for
     force,
     saveHistory,
     sessionId: finalSessionId,
+    userId, // Pass user_id - null for Guest mode, number for User mode
   };
   
   // Debug logging
@@ -154,6 +156,7 @@ export async function runCommand(command, cwd = null, generatedByAi = false, for
     sessionId: finalSessionId,
     saveHistory,
     generatedByAi,
+    userId,
     source: sessionIdSource,
   });
   
@@ -214,10 +217,31 @@ export async function register(email, password) {
 }
 
 /**
- * Login a user
+ * Login a user - returns [userId, isVerified]
  */
 export async function login(email, password) {
   return safeInvoke('login', { email, password });
+}
+
+/**
+ * Verify email with code
+ */
+export async function verifyEmail(email, code) {
+  return safeInvoke('verify_email', { email, code });
+}
+
+/**
+ * Request password reset code
+ */
+export async function requestPasswordReset(email) {
+  return safeInvoke('request_password_reset', { email });
+}
+
+/**
+ * Reset password with code
+ */
+export async function resetPassword(email, code, newPassword) {
+  return safeInvoke('reset_password', { email, code, newPassword });
 }
 
 // ============ AI Features ============
@@ -265,7 +289,14 @@ export async function setOpenaiApiKey(key) {
 }
 
 /**
- * Set AI provider (gemini or openai)
+ * Set Groq API key
+ */
+export async function setGroqApiKey(key) {
+  return safeInvoke('set_groq_api_key', { key });
+}
+
+/**
+ * Set AI provider (gemini, openai, or groq)
  */
 export async function setAiProvider(provider) {
   return safeInvoke('set_ai_provider', { provider });
@@ -329,10 +360,15 @@ export async function getHistory(limit = 100, offset = 0) {
 }
 
 /**
- * Get all sessions
+ * Get all sessions for the current user
  */
 export async function getSessions() {
-  return safeInvoke('get_sessions');
+  // Get user_id from localStorage
+  const userId = localStorage.getItem('userId');
+  if (!userId) {
+    return []; // Guest mode - no sessions
+  }
+  return safeInvoke('get_sessions', { userId: parseInt(userId, 10) });
 }
 
 /**
@@ -493,6 +529,9 @@ export async function onWorkflowComplete(callback) {
 export default {
   register,
   login,
+  verifyEmail,
+  requestPasswordReset,
+  resetPassword,
   nlToCmd,
   runCommand,
   killCommand,

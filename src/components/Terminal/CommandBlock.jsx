@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import Ansi from 'ansi-to-react';
+import { HiSparkles } from 'react-icons/hi';
 import './CommandBlock.css';
 
 /**
@@ -85,11 +87,31 @@ export default function CommandBlock({
       {/* Output Area */}
       {!isCollapsed && hasOutput && (
         <div className="command-output">
-          {stdout && <pre className="stdout">{stdout}</pre>}
-          {stderr && <pre className="stderr">{stderr}</pre>}
-          <button className="copy-output-btn" onClick={handleCopyOutput} title="Copy output">
-            📋
-          </button>
+          {stdout && (
+            <pre className="stdout">
+              <Ansi>{stdout}</Ansi>
+            </pre>
+          )}
+          {stderr && (
+            <pre className="stderr">
+              <Ansi>{stderr}</Ansi>
+            </pre>
+          )}
+          <div className="output-actions">
+            <button 
+              className="output-action-btn" 
+              onClick={() => {
+                const output = stdout || stderr || '';
+                onExplain?.(command, output);
+              }} 
+              title="Explain Output"
+            >
+              <HiSparkles />
+            </button>
+            <button className="output-action-btn" onClick={handleCopyOutput} title="Copy output">
+              📋
+            </button>
+          </div>
         </div>
       )}
 

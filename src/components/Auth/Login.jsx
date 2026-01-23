@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import './Auth.css';
 import { login } from '../../services/tauriClient';
+import ForgotPassword from './ForgotPassword';
 
 /**
  * Login - User login component
@@ -10,6 +11,7 @@ export default function Login({ onLogin, onSwitchToRegister }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -17,14 +19,23 @@ export default function Login({ onLogin, onSwitchToRegister }) {
     setIsLoading(true);
 
     try {
-      const userId = await login(email, password);
+      const result = await login(email, password);
+      // Result is [userId, isVerified]
+      const [id, isVerified] = Array.isArray(result) ? result : [result, true];
+      
+      const userData = {
+        id,
+        email,
+        isVerified: isVerified || false,
+      };
       
       // Store authentication state in localStorage
-      localStorage.setItem('isAuthenticated', 'true');
-      localStorage.setItem('userId', userId.toString());
+      localStorage.setItem('user', JSON.stringify(userData));
+      localStorage.setItem('userId', id.toString());
       localStorage.setItem('userEmail', email);
+      localStorage.setItem('isAuthenticated', 'true');
       
-      onLogin?.(userId);
+      onLogin?.(userData);
     } catch (err) {
       console.error('Login error:', err);
       setError(err.toString() || 'Login failed. Please check your credentials.');
@@ -32,6 +43,19 @@ export default function Login({ onLogin, onSwitchToRegister }) {
       setIsLoading(false);
     }
   };
+
+  if (showForgotPassword) {
+    return (
+      <ForgotPassword
+        onBack={() => setShowForgotPassword(false)}
+        onSuccess={() => {
+          setShowForgotPassword(false);
+          setError('');
+          // Show success message - user can now login with new password
+        }}
+      />
+    );
+  }
 
   return (
     <div className="auth-container">
@@ -75,6 +99,14 @@ export default function Login({ onLogin, onSwitchToRegister }) {
               required
               disabled={isLoading}
             />
+            <button
+              type="button"
+              className="forgot-password-link"
+              onClick={() => setShowForgotPassword(true)}
+              disabled={isLoading}
+            >
+              Forgot Password?
+            </button>
           </div>
 
           <button

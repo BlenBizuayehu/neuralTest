@@ -8,6 +8,7 @@ import {
   setApiKey,
   setGeminiApiKey,
   setOpenaiApiKey,
+  setGroqApiKey,
   setAiProvider,
   generateWorkflow,
   clearApiKey,
@@ -22,7 +23,7 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
-  const [provider, setProvider] = useState('gemini'); // 'gemini' or 'openai'
+  const [provider, setProvider] = useState('groq'); // 'groq', 'gemini', or 'openai'
   const [mode, setMode] = useState('chat'); // 'chat', 'explain', 'workflow'
   const inputRef = useRef(null);
   const messagesRef = useRef(null);
@@ -48,6 +49,29 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
       if (initialPrompt.type === 'explain') {
         setMode('explain');
         handleExplainCommand(initialPrompt.command);
+      } else if (initialPrompt.type === 'chat' && initialPrompt.initialMessage) {
+        setMode('chat');
+        // Add the initial message and auto-submit it
+        const message = initialPrompt.initialMessage;
+        addMessage('user', message);
+        setIsLoading(true);
+        // Process the message - for output explanations, use nlToCmd with a question format
+        nlToCmd(message, cwd)
+          .then((response) => {
+            if (response.explanation) {
+              addMessage('assistant', response.explanation);
+            } else if (response.commands && response.commands.length > 0) {
+              addMessage('assistant', `I can help with that. Here are some commands:\n\n${response.commands.map(cmd => `\`${cmd}\``).join('\n')}`);
+            } else {
+              addMessage('assistant', 'I understand your question. Let me help explain that output.');
+            }
+          })
+          .catch((e) => {
+            addMessage('error', `Failed to process: ${e}`);
+          })
+          .finally(() => {
+            setIsLoading(false);
+          });
       } else {
         setMode('chat');
       }
@@ -83,13 +107,16 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
       // Then set the appropriate API key
       if (provider === 'gemini') {
         await setGeminiApiKey(apiKeyInput.trim());
-      } else {
+      } else if (provider === 'openai') {
         await setOpenaiApiKey(apiKeyInput.trim());
+      } else if (provider === 'groq') {
+        await setGroqApiKey(apiKeyInput.trim());
       }
       
       setIsConfigured(true);
       setApiKeyInput('');
-      addMessage('system', `${provider === 'gemini' ? 'Gemini' : 'OpenAI'} API key configured successfully! You can now use AI features.`);
+      const providerName = provider === 'gemini' ? 'Gemini' : provider === 'openai' ? 'OpenAI' : 'Groq';
+      addMessage('system', `${providerName} API key configured successfully! You can now use AI features.`);
     } catch (e) {
       addMessage('error', `Failed to set API key: ${e}`);
     }
@@ -331,11 +358,20 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
               <label>
                 <input
                   type="radio"
+                  value="groq"
+                  checked={provider === 'groq'}
+                  onChange={(e) => setProvider(e.target.value)}
+                />
+                <span>⚡ Groq (Fast & Free, Default)</span>
+              </label>
+              <label>
+                <input
+                  type="radio"
                   value="gemini"
                   checked={provider === 'gemini'}
                   onChange={(e) => setProvider(e.target.value)}
                 />
-                <span>Gemini (Free, Recommended)</span>
+                <span>Gemini (Free)</span>
               </label>
               <label>
                 <input
@@ -352,7 +388,13 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
                 type="text"
                 value={apiKeyInput}
                 onChange={(e) => setApiKeyInput(e.target.value)}
-                placeholder={provider === 'gemini' ? 'AIza... (Paste your Gemini API key here)' : 'sk-... (Paste your OpenAI API key here)'}
+                placeholder={
+                  provider === 'groq' 
+                    ? 'gsk_... (Paste your Groq API key here)' 
+                    : provider === 'gemini' 
+                    ? 'AIza... (Paste your Gemini API key here)' 
+                    : 'sk-... (Paste your OpenAI API key here)'
+                }
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && apiKeyInput.trim()) {
@@ -368,6 +410,20 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
                 Save
               </button>
             </div>
+            {provider === 'groq' && (
+              <div className="setup-help">
+                <p className="hint">
+                  ⚡ <strong>Get your FREE Groq API key:</strong>
+                </p>
+                <ol className="setup-steps">
+                  <li>Visit: <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer">https://console.groq.com/keys</a></li>
+                  <li>Sign up or log in</li>
+                  <li>Click "Create API Key"</li>
+                  <li>Copy the key (starts with gsk_...)</li>
+                  <li>Paste it above and click Save</li>
+                </ol>
+              </div>
+            )}
             {provider === 'gemini' && (
               <div className="setup-help">
                 <p className="hint">

@@ -24,7 +24,7 @@ import {
 /**
  * Terminal - Main terminal component with command blocks
  */
-const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onOpenAiPanel, onCommandExecuted }, ref) {
+const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onOpenAiPanel, onCommandExecuted, userId }, ref) {
   const [commandBlocks, setCommandBlocks] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -41,6 +41,10 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
   const pendingCommandIds = useRef(new Set()); // Track command IDs to prevent duplicates
   const [securityWarning, setSecurityWarning] = useState(null); // Security warning state
   const pendingDangerousCommand = useRef(null); // Store command waiting for confirmation
+
+  // Store handleAiFallback in a ref to avoid dependency issues
+  const handleAiFallbackRef = useRef(null);
+  const prevSessionIdRef = useRef(sessionId); // Track previous sessionId to detect changes
 
   // Handle AI fallback when command fails
   const handleAiFallback = useCallback(async (originalCmd, errorMsg) => {
@@ -106,6 +110,11 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
     }
   }, [cwd, sessionId, onCommandExecuted]);
 
+  // Keep ref in sync with the latest function
+  useEffect(() => {
+    handleAiFallbackRef.current = handleAiFallback;
+  }, [handleAiFallback]);
+
   // Load history on mount
   useEffect(() => {
     loadHistory();
@@ -128,251 +137,270 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
     }).catch(e => console.error('[DEBUG] Failed to get recent commands:', e));
   }, []);
 
-  // Set up event listeners - FIXED: Proper cleanup to prevent duplicate output
+  // Set up event listeners - FIXED: Proper async handling to prevent race conditions
   useEffect(() => {
     isMountedRef.current = true;
-    unlistenRefs.current = [];
+    
+    // Store unlisten functions in local variables (not ref array) for proper cleanup
+    let unlistenStdout = null;
+    let unlistenStderr = null;
+    let unlistenExit = null;
+    let unlistenStarted = null;
+    let isSetupComplete = false;
+    let isCleanedUp = false;
 
     const setupListeners = async () => {
-      // Command stdout
-      const unlistenStdout = await onCommandStdout(({ id, chunk }) => {
-        if (!isMountedRef.current) return;
-        setCommandBlocks((prev) =>
-          prev.map((block) =>
-            block.id === id
-              ? { ...block, stdout: (block.stdout || '') + chunk }
-              : block
-          )
-        );
-      });
-      unlistenRefs.current.push(unlistenStdout);
+      // Check if cleanup already ran before setup completed
+      if (isCleanedUp || !isMountedRef.current) {
+        return;
+      }
 
-      // Command stderr
-      const unlistenStderr = await onCommandStderr(({ id, chunk }) => {
-        if (!isMountedRef.current) return;
-        setCommandBlocks((prev) =>
-          prev.map((block) =>
-            block.id === id
-              ? { ...block, stderr: (block.stderr || '') + chunk }
-              : block
-          )
-        );
-      });
-      unlistenRefs.current.push(unlistenStderr);
-
-      // Command exit
-      const unlistenExit = await onCommandExit(async ({ id, exit_code }) => {
-        if (!isMountedRef.current) return;
-        
-        // DEBUG: Log exit code
-        console.log('[Command Exit] Command ID:', id, 'Exit Code:', exit_code);
-        
-        // Remove from pending set when command exits
-        pendingCommandIds.current.delete(id);
-        
-        setCommandBlocks((prev) => {
-          const updated = prev.map((block) =>
-            block.id === id
-              ? { ...block, exitCode: exit_code, isRunning: false }
-              : block
+      try {
+        // Command stdout
+        unlistenStdout = await onCommandStdout(({ id, chunk }) => {
+          if (!isMountedRef.current || isCleanedUp) return;
+          setCommandBlocks((prev) =>
+            prev.map((block) =>
+              block.id === id
+                ? { ...block, stdout: (block.stdout || '') + chunk }
+                : block
+            )
           );
-
-          // Step C: Check for "not recognized" error and trigger AI fallback
-          if (exit_code !== 0) {
-            const block = updated.find((b) => b.id === id);
-            if (block) {
-              const errorText = (block.stderr || '').toLowerCase();
-              const isNotRecognized = 
-                errorText.includes('not recognized') ||
-                errorText.includes('command not found') ||
-                errorText.includes('not found') ||
-                errorText.includes('is not recognized as an internal or external command');
-
-              console.log('[Error Analysis] Command:', block.command, 'Error Text:', errorText.substring(0, 100), 'Is Not Recognized:', isNotRecognized);
-
-              // Check if this was a pending AI fallback candidate
-              if (isNotRecognized && pendingAiFallback.current && pendingAiFallback.current.commandId === id) {
-                const originalCmd = pendingAiFallback.current.originalCmd;
-                pendingAiFallback.current = null;
-                
-                console.log('[AI Fallback] Triggering fallback for command:', originalCmd);
-                
-                // Trigger AI fallback asynchronously
-                setTimeout(() => {
-                  if (isMountedRef.current) {
-                    handleAiFallback(originalCmd, block.stderr || 'Command not found');
-                  }
-                }, 100);
-              } else if (block.stderr && !isNotRecognized) {
-                // For other errors, get AI error analysis
-                console.log('[AI Analysis] Requesting error analysis for command:', block.command);
-                
-                analyzeError(
-                  block.stderr,
-                  exit_code,
-                  block.command,
-                  cwd
-                ).then((suggestion) => {
-                  console.log('[AI Analysis] Received suggestion:', suggestion);
-                  if (isMountedRef.current) {
-                    setCommandBlocks((prev) =>
-                      prev.map((b) =>
-                        b.id === id ? { ...b, suggestion } : b
-                      )
-                    );
-                  }
-                }).catch((e) => {
-                  const errorStr = e.toString();
-                  console.error('[AI Analysis] Failed to get error suggestion:', e);
-                  console.error('[AI Analysis] Error details:', {
-                    command: block.command,
-                    exitCode: exit_code,
-                    stderr: block.stderr?.substring(0, 200),
-                    error: errorStr,
-                  });
-                  
-                  // Check for rate limit (429) or quota errors
-                  const isRateLimit = errorStr.includes('429') || 
-                                     errorStr.toLowerCase().includes('quota') ||
-                                     errorStr.toLowerCase().includes('rate limit') ||
-                                     errorStr.toLowerCase().includes('too many requests');
-                  
-                  if (isRateLimit && isMountedRef.current) {
-                    console.log('[AI Analysis] Rate limit detected, using mock suggestion');
-                    
-                    // Extract likely fix from command (simple heuristic)
-                    const extractLikelyFix = (cmd) => {
-                      // Common typos
-                      const corrections = {
-                        'gti': 'git',
-                        'istall': 'install',
-                        'itnstall': 'install',
-                        'nmp': 'npm',
-                        'yran': 'yarn',
-                        'pythn': 'python',
-                        'pytho': 'python',
-                      };
-                      
-                      let corrected = cmd.toLowerCase();
-                      for (const [typo, correct] of Object.entries(corrections)) {
-                        if (corrected.includes(typo)) {
-                          corrected = corrected.replace(typo, correct);
-                        }
-                      }
-                      
-                      // If no correction found, try to extract the base command
-                      const parts = cmd.split(' ');
-                      if (parts.length > 0) {
-                        const base = parts[0];
-                        if (base.startsWith('g')) return `git ${parts.slice(1).join(' ')}`;
-                        if (base.startsWith('n')) return `npm ${parts.slice(1).join(' ')}`;
-                      }
-                      
-                      return corrected || cmd;
-                    };
-                    
-                    const mockFix = extractLikelyFix(block.command);
-                    const mockSuggestion = {
-                      explanation: "⚠️ [Testing Mode] API Rate Limit hit. This is a simulated response to verify the UI. The command likely contains a typo.",
-                      fix: mockFix,
-                      fixes: [mockFix],
-                      confidence: 0.7,
-                    };
-                    
-                    // Apply mock suggestion to the block
-                    setCommandBlocks((prev) =>
-                      prev.map((b) =>
-                        b.id === id ? { ...b, suggestion: mockSuggestion } : b
-                      )
-                    );
-                  }
-                });
-              } else {
-                console.log('[Error Analysis] No AI analysis triggered. Block stderr:', block.stderr ? 'present' : 'empty', 'Is Not Recognized:', isNotRecognized);
-              }
-            } else {
-              console.warn('[Command Exit] Block not found for ID:', id);
-            }
-          }
-
-          return updated;
         });
-        
-        // Reset loading state and guard when command exits
-        setIsLoading(false);
-        isSubmittingRef.current = false;
-        
-        // Re-focus input after command exits
-        setTimeout(() => {
-          if (isMountedRef.current) {
-            inputRef.current?.focus();
-          }
-        }, 50);
-      });
-      unlistenRefs.current.push(unlistenExit);
 
-      // Command started - FIXED: Prevent duplicate blocks
-      const unlistenStarted = await onCommandStarted(({ id, command_text, timestamp }) => {
-        if (!isMountedRef.current) return;
-        
-        // Check if we already have this command ID (prevent duplicates)
-        if (pendingCommandIds.current.has(id)) {
-          // Block already exists, just update it if needed
-          setCommandBlocks((prev) => {
-            const exists = prev.some((b) => b.id === id);
-            if (exists) {
-              // Block exists, just ensure it's marked as running
-              return prev.map((block) =>
-                block.id === id && !block.isRunning
-                  ? { ...block, isRunning: true }
-                  : block
-              );
-            }
-            return prev;
-          });
+        // Check again after async operation
+        if (isCleanedUp || !isMountedRef.current) {
+          if (unlistenStdout) unlistenStdout();
           return;
         }
-        
-        // Mark this ID as pending to prevent duplicates
-        pendingCommandIds.current.add(id);
-        
-        // Only create block if it doesn't exist (shouldn't happen, but safety check)
-        setCommandBlocks((prev) => {
-          const exists = prev.some((b) => b.id === id);
-          if (exists) return prev;
-          
-          return [
-            ...prev,
-            {
-              id,
-              command: command_text,
-              timestamp,
-              isRunning: true,
-              stdout: '',
-              stderr: '',
-              exitCode: null,
-            },
-          ];
+
+        // Command stderr
+        unlistenStderr = await onCommandStderr(({ id, chunk }) => {
+          if (!isMountedRef.current || isCleanedUp) return;
+          setCommandBlocks((prev) =>
+            prev.map((block) =>
+              block.id === id
+                ? { ...block, stderr: (block.stderr || '') + chunk }
+                : block
+            )
+          );
         });
-      });
-      unlistenRefs.current.push(unlistenStarted);
+
+        if (isCleanedUp || !isMountedRef.current) {
+          if (unlistenStdout) unlistenStdout();
+          if (unlistenStderr) unlistenStderr();
+          return;
+        }
+
+        // Command exit
+        unlistenExit = await onCommandExit(async ({ id, exit_code }) => {
+          if (!isMountedRef.current || isCleanedUp) return;
+          
+          // DEBUG: Log exit code
+          console.log('[Command Exit] Command ID:', id, 'Exit Code:', exit_code);
+          
+          // Remove from pending set when command exits
+          pendingCommandIds.current.delete(id);
+          
+          setCommandBlocks((prev) => {
+            const updated = prev.map((block) =>
+              block.id === id
+                ? { ...block, exitCode: exit_code, isRunning: false }
+                : block
+            );
+
+            // Step C: Check for "not recognized" error and trigger AI fallback
+            if (exit_code !== 0) {
+              const block = updated.find((b) => b.id === id);
+              if (block) {
+                const errorText = (block.stderr || '').toLowerCase();
+                const isNotRecognized = 
+                  errorText.includes('not recognized') ||
+                  errorText.includes('command not found') ||
+                  errorText.includes('not found') ||
+                  errorText.includes('is not recognized as an internal or external command');
+
+                console.log('[Error Analysis] Command:', block.command, 'Error Text:', errorText.substring(0, 100), 'Is Not Recognized:', isNotRecognized);
+
+                // Check if this was a pending AI fallback candidate
+                if (isNotRecognized && pendingAiFallback.current && pendingAiFallback.current.commandId === id) {
+                  const originalCmd = pendingAiFallback.current.originalCmd;
+                  pendingAiFallback.current = null;
+                  
+                  console.log('[AI Fallback] Triggering fallback for command:', originalCmd);
+                  
+                  // Trigger AI fallback asynchronously - use ref to get latest function
+                  setTimeout(() => {
+                    if (isMountedRef.current && !isCleanedUp && handleAiFallbackRef.current) {
+                      handleAiFallbackRef.current(originalCmd, block.stderr || 'Command not found');
+                    }
+                  }, 100);
+                } else if (block.stderr && !isNotRecognized) {
+                  // For other errors, get AI error analysis
+                  console.log('[AI Analysis] Requesting error analysis for command:', block.command);
+                  
+                  analyzeError(
+                    block.stderr,
+                    exit_code,
+                    block.command,
+                    cwd
+                  ).then((suggestion) => {
+                    console.log('[AI Analysis] Received suggestion:', suggestion);
+                    if (isMountedRef.current && !isCleanedUp) {
+                      setCommandBlocks((prev) =>
+                        prev.map((b) =>
+                          b.id === id ? { ...b, suggestion } : b
+                        )
+                      );
+                    }
+                  }).catch((e) => {
+                    const errorStr = e.toString();
+                    console.error('[AI Analysis] Failed to get error suggestion:', e);
+                    console.error('[AI Analysis] Error details:', {
+                      command: block.command,
+                      exitCode: exit_code,
+                      stderr: block.stderr?.substring(0, 200),
+                      error: errorStr,
+                    });
+                    
+                    // Show the actual error message to the user instead of a mock response
+                    if (isMountedRef.current && !isCleanedUp) {
+                      const errorSuggestion = {
+                        explanation: `AI Error: ${errorStr}`,
+                        fix: null,
+                        fixes: [],
+                        confidence: 0.0,
+                      };
+                      
+                      // Apply error suggestion to the block
+                      setCommandBlocks((prev) =>
+                        prev.map((b) =>
+                          b.id === id ? { ...b, suggestion: errorSuggestion } : b
+                        )
+                      );
+                    }
+                  });
+                } else {
+                  console.log('[Error Analysis] No AI analysis triggered. Block stderr:', block.stderr ? 'present' : 'empty', 'Is Not Recognized:', isNotRecognized);
+                }
+              } else {
+                console.warn('[Command Exit] Block not found for ID:', id);
+              }
+            }
+
+            return updated;
+          });
+          
+          // Reset loading state and guard when command exits
+          setIsLoading(false);
+          isSubmittingRef.current = false;
+          
+          // Re-focus input after command exits
+          setTimeout(() => {
+            if (isMountedRef.current && !isCleanedUp) {
+              inputRef.current?.focus();
+            }
+          }, 50);
+        });
+
+        if (isCleanedUp || !isMountedRef.current) {
+          if (unlistenStdout) unlistenStdout();
+          if (unlistenStderr) unlistenStderr();
+          if (unlistenExit) unlistenExit();
+          return;
+        }
+
+        // Command started - FIXED: Prevent duplicate blocks
+        unlistenStarted = await onCommandStarted(({ id, command_text, timestamp }) => {
+          if (!isMountedRef.current || isCleanedUp) return;
+          
+          // Check if we already have this command ID (prevent duplicates)
+          if (pendingCommandIds.current.has(id)) {
+            // Block already exists, just update it if needed
+            setCommandBlocks((prev) => {
+              const exists = prev.some((b) => b.id === id);
+              if (exists) {
+                // Block exists, just ensure it's marked as running
+                return prev.map((block) =>
+                  block.id === id && !block.isRunning
+                    ? { ...block, isRunning: true }
+                    : block
+                );
+              }
+              return prev;
+            });
+            return;
+          }
+          
+          // Mark this ID as pending to prevent duplicates
+          pendingCommandIds.current.add(id);
+          
+          // Only create block if it doesn't exist (shouldn't happen, but safety check)
+          setCommandBlocks((prev) => {
+            const exists = prev.some((b) => b.id === id);
+            if (exists) return prev;
+            
+            return [
+              ...prev,
+              {
+                id,
+                command: command_text,
+                timestamp,
+                isRunning: true,
+                stdout: '',
+                stderr: '',
+                exitCode: null,
+              },
+            ];
+          });
+        });
+
+        // Mark setup as complete only if we didn't get cleaned up
+        if (!isCleanedUp && isMountedRef.current) {
+          isSetupComplete = true;
+        } else {
+          // Cleanup was called during setup, clean up what we have
+          if (unlistenStdout) unlistenStdout();
+          if (unlistenStderr) unlistenStderr();
+          if (unlistenExit) unlistenExit();
+          if (unlistenStarted) unlistenStarted();
+        }
+      } catch (error) {
+        console.error('[Setup Listeners] Error setting up listeners:', error);
+        // Clean up any listeners that were set up before the error
+        if (unlistenStdout) unlistenStdout();
+        if (unlistenStderr) unlistenStderr();
+        if (unlistenExit) unlistenExit();
+        if (unlistenStarted) unlistenStarted();
+      }
     };
 
+    // Start async setup
     setupListeners();
 
     // Cleanup function - properly unlisten all events
     return () => {
+      isCleanedUp = true;
       isMountedRef.current = false;
-      unlistenRefs.current.forEach((unlisten) => {
-        if (unlisten && typeof unlisten === 'function') {
-          unlisten();
-        }
-      });
-      unlistenRefs.current = [];
+      
+      // Clean up all listeners (whether setup completed or not)
+      if (unlistenStdout && typeof unlistenStdout === 'function') {
+        unlistenStdout();
+      }
+      if (unlistenStderr && typeof unlistenStderr === 'function') {
+        unlistenStderr();
+      }
+      if (unlistenExit && typeof unlistenExit === 'function') {
+        unlistenExit();
+      }
+      if (unlistenStarted && typeof unlistenStarted === 'function') {
+        unlistenStarted();
+      }
+      
       // Clear pending command IDs on cleanup (React.StrictMode safety)
       pendingCommandIds.current.clear();
     };
-  }, [cwd, handleAiFallback]);
+  }, [cwd]); // Removed handleAiFallback from dependencies - using ref instead
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -485,7 +513,7 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
 
     // Step B: Try to execute the command normally
     try {
-      const result = await runCommand(cmd, cwd, false, false, false, null, sessionId);
+      const result = await runCommand(cmd, cwd, false, false, false, sessionId, userId);
       
       // Store original command for potential AI fallback
       pendingAiFallback.current = { originalCmd: cmd, commandId: result.id };
@@ -583,28 +611,7 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
   const handleAiCommand = async (prompt) => {
     setIsAiThinking(true);
     try {
-      let response;
-      try {
-        response = await nlToCmd(prompt, cwd);
-      } catch (error) {
-        const errorStr = error.toString();
-        const isRateLimit = errorStr.includes('429') || 
-                           errorStr.toLowerCase().includes('quota') ||
-                           errorStr.toLowerCase().includes('rate limit') ||
-                           errorStr.toLowerCase().includes('too many requests');
-        
-        if (isRateLimit) {
-          console.log('[AI Command] Rate limit detected, using mock response');
-          // Create a simple mock response based on the prompt
-          response = {
-            commands: [prompt], // Use the prompt as-is for mock
-            warning: null,
-            explanation: "⚠️ [Testing Mode] API Rate Limit hit. Using simulated response.",
-          };
-        } else {
-          throw error; // Re-throw if not a rate limit error
-        }
-      }
+      const response = await nlToCmd(prompt, cwd);
       
       if (response.commands && response.commands.length > 0) {
         // Create a proposal for user review instead of auto-executing
@@ -696,8 +703,17 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
     }
   };
 
-  const handleExplain = async (command) => {
-    onOpenAiPanel?.({ type: 'explain', command });
+  const handleExplain = async (command, output = null) => {
+    if (output) {
+      // If output is provided, use chat mode with a specific prompt about the output
+      onOpenAiPanel?.({ 
+        type: 'chat', 
+        initialMessage: `Explain this terminal output for the command '${command}':\n\n${output}` 
+      });
+    } else {
+      // If no output, use the explain mode for the command itself
+      onOpenAiPanel?.({ type: 'explain', command });
+    }
   };
 
   const handleApplyFix = async (fix) => {
@@ -709,7 +725,7 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
     setHistoryIndex(-1);
     
     try {
-      const result = await runCommand(fix.trim(), cwd, false, false, false, null, sessionId);
+      const result = await runCommand(fix.trim(), cwd, false, false, false, sessionId, userId);
       
       // Mark this command ID as pending to prevent duplicates
       pendingCommandIds.current.add(result.id);
@@ -800,7 +816,7 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
     // Execute the command
     setIsLoading(true);
     try {
-      const result = await runCommand(command, cwd, true, false, false, null, sessionId);
+      const result = await runCommand(command, cwd, true, false, false, sessionId, userId);
       
       pendingCommandIds.current.add(result.id);
       
@@ -901,7 +917,7 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
     // Re-execute with force=true
     setIsLoading(true);
     try {
-      const result = await runCommand(cmd, cwd, false, true, false, null, sessionId); // force=true
+      const result = await runCommand(cmd, cwd, false, true, false, sessionId, userId); // force=true
       
       // Store original command for potential AI fallback
       pendingAiFallback.current = { originalCmd: cmd, commandId: result.id };
@@ -996,6 +1012,16 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
     setInputValue('');
     setHistoryIndex(-1);
   }, []);
+
+  // Load session when sessionId changes (but not on initial mount to avoid double-loading)
+  useEffect(() => {
+    // Only load if sessionId actually changed (not initial mount)
+    if (sessionId && sessionId !== prevSessionIdRef.current) {
+      console.log('[Terminal] Session ID changed, loading session:', sessionId);
+      loadSession(sessionId);
+    }
+    prevSessionIdRef.current = sessionId;
+  }, [sessionId, loadSession]);
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({

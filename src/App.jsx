@@ -22,7 +22,18 @@ function generateUUID() {
 }
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // User state: { id, email, isVerified } or null for Guest
+  const [user, setUser] = useState(() => {
+    const stored = localStorage.getItem('user');
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
   const [showRegister, setShowRegister] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [cwd, setCwd] = useState(null);
@@ -46,9 +57,14 @@ function App() {
 
   // Check authentication status on mount
   useEffect(() => {
-    const authStatus = localStorage.getItem('isAuthenticated');
-    if (authStatus === 'true') {
-      setIsAuthenticated(true);
+    const stored = localStorage.getItem('user');
+    if (stored) {
+      try {
+        const userData = JSON.parse(stored);
+        setUser(userData);
+      } catch {
+        setUser(null);
+      }
     }
   }, []);
 
@@ -130,18 +146,31 @@ function App() {
     setIsAiPanelOpen(true);
   }, []);
 
-  const handleLogin = useCallback((userId) => {
-    setIsAuthenticated(true);
+  const handleLogin = useCallback((userData) => {
+    // userData: { id, email, isVerified }
+    setUser(userData);
+    localStorage.setItem('user', JSON.stringify(userData));
+    localStorage.setItem('userId', userData.id.toString());
+    localStorage.setItem('userEmail', userData.email);
     setShowRegister(false);
+    setShowLoginModal(false);
   }, []);
 
   const handleLogout = useCallback(() => {
-    localStorage.removeItem('isAuthenticated');
+    // Clear all user data
+    localStorage.removeItem('user');
     localStorage.removeItem('userId');
     localStorage.removeItem('userEmail');
-    setIsAuthenticated(false);
-    setCwd(null);
-    setContext(null);
+    localStorage.removeItem('isAuthenticated');
+    // Generate new session ID for guest mode
+    const newSessionId = generateUUID();
+    setSessionId(newSessionId);
+    localStorage.setItem('current_session_id', newSessionId);
+    setUser(null);
+    // Reset terminal if available
+    if (terminalInputRef.current) {
+      terminalInputRef.current.resetSession?.();
+    }
   }, []);
 
   const handleHistoryCommandSelect = useCallback((command) => {
@@ -172,12 +201,14 @@ function App() {
     if (terminalInputRef.current) {
       terminalInputRef.current.loadSession?.(sessionId);
     }
+    // Close sidebar after selection
+    setIsHistoryOpen(false);
   }, []);
 
   return (
     <div className="app">
       {/* Login/Register Modal */}
-      {(showLoginModal || showRegister) && !isAuthenticated && (
+      {(showLoginModal || showRegister) && !user && (
         <div className="auth-modal-overlay" onClick={() => {
           setShowLoginModal(false);
           setShowRegister(false);
@@ -258,11 +289,11 @@ function App() {
           >
             ✨ AI
           </button>
-          {isAuthenticated ? (
+          {user ? (
             <button
               className="header-btn logout-btn"
               onClick={handleLogout}
-              title="Logout"
+              title={`Logout (${user.email})`}
             >
               🚪
             </button>
@@ -290,6 +321,7 @@ function App() {
           onCwdChange={handleCwdChange}
           onOpenAiPanel={handleOpenAiPanel}
           onCommandExecuted={() => setHistoryRefreshTrigger(prev => prev + 1)}
+          userId={user?.id || null}
         />
       </main>
 
@@ -330,6 +362,7 @@ function App() {
         onClose={() => setIsHistoryOpen(false)}
         onSelectCommand={handleHistoryCommandSelect}
         onSelectSession={handleSessionSelect}
+        onNewSession={handleNewSession}
         currentSessionId={sessionId}
         refreshTrigger={historyRefreshTrigger}
       />

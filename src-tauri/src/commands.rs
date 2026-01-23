@@ -45,6 +45,7 @@ pub async fn run_command(
     force: Option<bool>,
     save_history: Option<bool>,
     session_id: Option<String>,
+    user_id: Option<i32>,
 ) -> Result<CommandHandle, String> {
     let force_flag = force.unwrap_or(false);
     
@@ -73,7 +74,7 @@ pub async fn run_command(
     tracing::info!("[IPC Debug] Received run_command with session_id: {:?}", session_id);
     println!("[IPC Debug] Received run_command with session_id: {:?}", session_id);
     
-    runner::run_command_emit(app, command, cwd, generated_by_ai.unwrap_or(false), save_history, session_id).await
+    runner::run_command_emit(app, command, cwd, generated_by_ai.unwrap_or(false), save_history, session_id, user_id).await
 }
 
 /// Kill a running command
@@ -150,7 +151,13 @@ pub fn set_openai_api_key(key: String) -> Result<(), String> {
     ai::set_openai_api_key(&key)
 }
 
-/// Set AI provider (gemini or openai)
+/// Set Groq API key
+#[tauri::command]
+pub fn set_groq_api_key(key: String) -> Result<(), String> {
+    ai::set_groq_api_key(&key)
+}
+
+/// Set AI provider (gemini, openai, or groq)
 #[tauri::command]
 pub fn set_ai_provider(provider: String) -> Result<(), String> {
     ai::set_provider(&provider)
@@ -215,10 +222,10 @@ pub fn get_history(limit: Option<i32>, offset: Option<i32>) -> Result<Vec<Comman
     db::get_command_history(limit, offset).map_err(|e| e.to_string())
 }
 
-/// Get all sessions
+/// Get all sessions for a user
 #[tauri::command]
-pub fn get_sessions() -> Result<Vec<SessionSummary>, String> {
-    db::get_sessions().map_err(|e| e.to_string())
+pub fn get_sessions(user_id: i32) -> Result<Vec<SessionSummary>, String> {
+    db::get_sessions(user_id).map_err(|e| e.to_string())
 }
 
 /// Get all commands for a specific session
@@ -295,7 +302,7 @@ pub fn redact_sensitive(text: String) -> String {
 
 /// Register a new user
 #[tauri::command]
-pub fn register(email: String, password: String) -> Result<i64, String> {
+pub async fn register(email: String, password: String) -> Result<(i64, String), String> {
     if email.is_empty() || password.is_empty() {
         return Err("Email and password are required".to_string());
     }
@@ -310,17 +317,61 @@ pub fn register(email: String, password: String) -> Result<i64, String> {
         return Err("Password must be at least 6 characters".to_string());
     }
     
-    db::register_user(&email, &password).map_err(|e| e.to_string())
+    db::register_user(&email, &password).await.map_err(|e| e.to_string())
 }
 
 /// Login a user
 #[tauri::command]
-pub fn login(email: String, password: String) -> Result<i64, String> {
+pub fn login(email: String, password: String) -> Result<(i64, bool), String> {
     if email.is_empty() || password.is_empty() {
         return Err("Email and password are required".to_string());
     }
     
     db::login_user(&email, &password).map_err(|e| e.to_string())
+}
+
+/// Verify email with code
+#[tauri::command]
+pub fn verify_email(email: String, code: String) -> Result<bool, String> {
+    if email.is_empty() || code.is_empty() {
+        return Err("Email and code are required".to_string());
+    }
+    
+    db::verify_email(&email, &code).map_err(|e| e.to_string())
+}
+
+/// Generate password reset code
+#[tauri::command]
+pub async fn request_password_reset(email: String) -> Result<String, String> {
+    if email.is_empty() {
+        return Err("Email is required".to_string());
+    }
+    
+    db::generate_reset_code(&email).await.map_err(|e| e.to_string())
+}
+
+/// Verify reset code (without resetting password)
+#[tauri::command]
+pub fn verify_reset_code(email: String, code: String) -> Result<bool, String> {
+    if email.is_empty() || code.is_empty() {
+        return Err("Email and code are required".to_string());
+    }
+    
+    db::verify_reset_code(&email, &code).map_err(|e| e.to_string())
+}
+
+/// Reset password with code
+#[tauri::command]
+pub fn reset_password(email: String, code: String, new_password: String) -> Result<(), String> {
+    if email.is_empty() || code.is_empty() || new_password.is_empty() {
+        return Err("Email, code, and new password are required".to_string());
+    }
+    
+    if new_password.len() < 6 {
+        return Err("Password must be at least 6 characters".to_string());
+    }
+    
+    db::reset_password(&email, &code, &new_password).map_err(|e| e.to_string())
 }
 
 /// Check if user is authenticated (for backend history saving)
