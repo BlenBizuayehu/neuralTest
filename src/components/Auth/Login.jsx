@@ -6,12 +6,12 @@ import ForgotPassword from './ForgotPassword';
 /**
  * Login - User login component
  */
-export default function Login({ onLogin, onSwitchToRegister }) {
+export default function Login({ onLogin, onSwitchToRegister, mode = 'login' }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(mode === 'forgot');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -21,12 +21,18 @@ export default function Login({ onLogin, onSwitchToRegister }) {
     try {
       const result = await login(email, password);
       // Result is [userId, isVerified]
-      const [id, isVerified] = Array.isArray(result) ? result : [result, true];
+      const [id, isVerified] = Array.isArray(result) ? result : [result, false];
+
+      // Enforce email verification before allowing login
+      if (!isVerified) {
+        setError('Please verify your email before signing in. Check your inbox for the verification code.');
+        return;
+      }
       
       const userData = {
         id,
         email,
-        isVerified: isVerified || false,
+        isVerified: true,
       };
       
       // Store authentication state in localStorage
@@ -62,7 +68,7 @@ export default function Login({ onLogin, onSwitchToRegister }) {
       <div className="auth-card">
         <div className="auth-header">
           <span className="auth-icon">⚡</span>
-          <h2>Project Neural</h2>
+          <h2>Neural</h2>
           <p>Sign in to continue</p>
         </div>
 

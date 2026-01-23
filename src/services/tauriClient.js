@@ -244,6 +244,13 @@ export async function resetPassword(email, code, newPassword) {
   return safeInvoke('reset_password', { email, code, newPassword });
 }
 
+/**
+ * Delete a user by email (admin/dev helper)
+ */
+export async function deleteUser(email) {
+  return safeInvoke('delete_user', { email });
+}
+
 // ============ AI Features ============
 
 /**
@@ -314,36 +321,6 @@ export async function setAiModel(model) {
  */
 export async function clearApiKey() {
   return safeInvoke('clear_api_key');
-}
-
-// ============ Workflows ============
-
-/**
- * Run a workflow
- */
-export async function runWorkflow(definition, cwd = null, workflowId = null) {
-  return safeInvoke('run_workflow', { definition, cwd, workflowId });
-}
-
-/**
- * Create a new workflow
- */
-export async function createWorkflow(name, description, steps) {
-  return safeInvoke('create_workflow', { name, description, steps });
-}
-
-/**
- * Get all saved workflows
- */
-export async function getWorkflows() {
-  return safeInvoke('get_workflows');
-}
-
-/**
- * Generate a workflow from natural language
- */
-export async function generateWorkflow(description, cwd = null) {
-  return safeInvoke('generate_workflow', { description, cwd });
 }
 
 // ============ History & Preferences ============
@@ -494,44 +471,13 @@ export async function onErrorSuggestion(callback) {
   return listenFn('error_suggestion', (event) => callback(event.payload));
 }
 
-/**
- * Listen for workflow step start
- */
-export async function onWorkflowStepStart(callback) {
-  const listenFn = await getListen();
-  return listenFn('workflow_step_start', (event) => callback(event.payload));
-}
-
-/**
- * Listen for workflow step complete
- */
-export async function onWorkflowStepComplete(callback) {
-  const listenFn = await getListen();
-  return listenFn('workflow_step_complete', (event) => callback(event.payload));
-}
-
-/**
- * Listen for workflow failed
- */
-export async function onWorkflowFailed(callback) {
-  const listenFn = await getListen();
-  return listenFn('workflow_failed', (event) => callback(event.payload));
-}
-
-/**
- * Listen for workflow complete
- */
-export async function onWorkflowComplete(callback) {
-  const listenFn = await getListen();
-  return listenFn('workflow_complete', (event) => callback(event.payload));
-}
-
 export default {
   register,
   login,
   verifyEmail,
   requestPasswordReset,
   resetPassword,
+  deleteUser,
   nlToCmd,
   runCommand,
   killCommand,
@@ -545,10 +491,6 @@ export default {
   isAiConfigured,
   setApiKey,
   setAiModel,
-  runWorkflow,
-  createWorkflow,
-  getWorkflows,
-  generateWorkflow,
   getHistory,
   getSuggestionsForCommand,
   getPreference,
@@ -562,10 +504,6 @@ export default {
   onCommandExit,
   onCommandStarted,
   onErrorSuggestion,
-  onWorkflowStepStart,
-  onWorkflowStepComplete,
-  onWorkflowFailed,
-  onWorkflowComplete,
 };
 
 

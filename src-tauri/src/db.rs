@@ -766,4 +766,9 @@ pub fn reset_password(email: &str, code: &str, new_password: &str) -> Result<()>
     }
 }
 
-
+/// Delete a user by email (admin/debug helper)
+pub fn delete_user_by_email(email: &str) -> Result<()> {
+    let conn = get_db().lock();
+    conn.execute("DELETE FROM users WHERE email = ?1", [email])?;
+    Ok(())
+}

@@ -10,7 +10,6 @@ import {
   setOpenaiApiKey,
   setGroqApiKey,
   setAiProvider,
-  generateWorkflow,
   clearApiKey,
 } from '../../services/tauriClient';
 
@@ -24,7 +23,7 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
   const [isConfigured, setIsConfigured] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [provider, setProvider] = useState('groq'); // 'groq', 'gemini', or 'openai'
-  const [mode, setMode] = useState('chat'); // 'chat', 'explain', 'workflow'
+  const [mode, setMode] = useState('chat'); // 'chat' or 'explain'
   const inputRef = useRef(null);
   const messagesRef = useRef(null);
 
@@ -165,25 +164,19 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
     setIsLoading(true);
 
     try {
-      if (mode === 'workflow') {
-        // Generate workflow
-        const steps = await generateWorkflow(text, cwd);
-        addMessage('assistant', 'Generated workflow:', { workflow: steps });
+      // Natural language to command
+      const response = await nlToCmd(text, cwd);
+      
+      if (response.warning) {
+        addMessage('warning', response.warning);
+      }
+      
+      if (response.commands && response.commands.length > 0) {
+        addMessage('assistant', response.explanation || 'Here are the commands:', {
+          commands: response.commands,
+        });
       } else {
-        // Natural language to command
-        const response = await nlToCmd(text, cwd);
-        
-        if (response.warning) {
-          addMessage('warning', response.warning);
-        }
-        
-        if (response.commands && response.commands.length > 0) {
-          addMessage('assistant', response.explanation || 'Here are the commands:', {
-            commands: response.commands,
-          });
-        } else {
-          addMessage('assistant', response.explanation || 'No commands generated.');
-        }
+        addMessage('assistant', response.explanation || 'No commands generated.');
       }
     } catch (e) {
       addMessage('error', `Error: ${e}`);
@@ -261,20 +254,6 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
               </div>
             )}
 
-            {/* Render workflow */}
-            {message.data?.workflow && (
-              <div className="workflow-preview">
-                {message.data.workflow.map((step, idx) => (
-                  <div key={idx} className="workflow-step">
-                    <span className="step-number">{step.step}</span>
-                    <code className="step-cmd">{step.cmd}</code>
-                  </div>
-                ))}
-                <button className="run-workflow-btn">
-                  Run Workflow
-                </button>
-              </div>
-            )}
           </div>
         );
 
@@ -324,12 +303,6 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
                 onClick={() => setMode('chat')}
               >
                 Chat
-              </button>
-              <button
-                className={`mode-tab ${mode === 'workflow' ? 'active' : ''}`}
-                onClick={() => setMode('workflow')}
-              >
-                Workflow
               </button>
             </div>
             {isConfigured && (
@@ -450,7 +423,7 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
                   <p>
                     {mode === 'chat'
                       ? 'Describe what you want to do in natural language'
-                      : 'Describe a workflow to automate'}
+                      : 'Paste a command you want explained'}
                   </p>
                   <div className="suggestions">
                     <button onClick={() => setInputValue('install dependencies and start dev server')}>
@@ -485,7 +458,7 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
                 placeholder={
                   mode === 'chat'
                     ? 'What would you like to do?'
-                    : 'Describe your workflow...'
+                    : 'Paste a command to explain...'
                 }
                 disabled={isLoading}
               />

@@ -160,16 +160,7 @@ export default function Register({ onRegister, onSwitchToLogin }) {
           verificationCode={verificationCode}
           onVerified={handleVerified}
           onClose={() => {
-            // Allow skipping verification (user can verify later)
-            const userData = {
-              id: userId,
-              email,
-              isVerified: false,
-            };
-            localStorage.setItem('user', JSON.stringify(userData));
-            localStorage.setItem('userId', userId.toString());
-            localStorage.setItem('userEmail', email);
-            onRegister?.(userData);
+            // Just close the modal; do NOT complete registration without verification
             setShowVerification(false);
           }}
         />

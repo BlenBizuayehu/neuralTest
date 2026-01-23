@@ -35,6 +35,33 @@
   --gradient-glow: linear-gradient(135deg, rgba(122, 162, 247, 0.2), rgba(187, 154, 247, 0.2));
 }
 
+/* Light theme overrides */
+html[data-theme='light'] {
+  --bg-primary: #f9fafb;
+  --bg-secondary: #f3f4f6;
+  --bg-tertiary: #e5e7eb;
+  --bg-elevated: #ffffff;
+
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #6b7280;
+
+  --accent-blue: #2563eb;
+  --accent-purple: #7c3aed;
+  --accent-cyan: #0891b2;
+  --accent-green: #16a34a;
+  --accent-yellow: #ca8a04;
+  --accent-orange: #ea580c;
+  --accent-red: #dc2626;
+  --accent-magenta: #db2777;
+
+  --border-color: #d1d5db;
+  --border-hover: #9ca3af;
+
+  --gradient-primary: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  --gradient-glow: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(124, 58, 237, 0.12));
+}
+
 /* Global Styles */
 * {
   box-sizing: border-box;

@@ -1045,7 +1045,7 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
         {/* Welcome Message */}
         {commandBlocks.length === 0 && (
           <div className="welcome-message">
-            <h2>Welcome to Project Neural</h2>
+            <h2>Welcome to Neural</h2>
             <p>Your AI-powered terminal assistant</p>
             <div className="tips">
               <div className="tip">

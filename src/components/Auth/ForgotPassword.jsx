@@ -13,7 +13,6 @@ export default function ForgotPassword({ onBack, onSuccess }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [displayedCode, setDisplayedCode] = useState('');
 
   const handleRequestReset = async (e) => {
     e.preventDefault();
@@ -21,8 +20,7 @@ export default function ForgotPassword({ onBack, onSuccess }) {
     setIsLoading(true);
 
     try {
-      const code = await requestPasswordReset(email);
-      setDisplayedCode(code);
+      await requestPasswordReset(email);
       setStep('verify');
     } catch (err) {
       console.error('Password reset request error:', err);
@@ -115,11 +113,8 @@ export default function ForgotPassword({ onBack, onSuccess }) {
           <>
             <div className="verification-info">
               <p className="verification-code-display">
-                <strong>Simulated Email Sent:</strong> Your reset code is{' '}
-                <code className="verification-code">{displayedCode}</code>
-              </p>
-              <p className="verification-hint">
-                (In a real app, this would be sent via email)
+                A reset code has been sent to <code className="verification-email">{email}</code>.
+                Please check your inbox and spam folder.
               </p>
             </div>
 

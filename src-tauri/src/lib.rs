@@ -6,7 +6,6 @@ mod email;
 mod models;
 mod redaction;
 mod runner;
-mod workflow;
 
 use commands::*;
 
@@ -32,6 +31,7 @@ pub fn run() {
             request_password_reset,
             verify_reset_code,
             reset_password,
+            delete_user,
             is_authenticated,
             // Natural Language
             nl_to_cmd,
@@ -56,11 +56,6 @@ pub fn run() {
             set_ai_provider,
             set_ai_model,
             clear_api_key,
-            // Workflows
-            run_workflow,
-            create_workflow,
-            get_workflows,
-            generate_workflow,
             // History & Preferences
             get_history,
             get_sessions,

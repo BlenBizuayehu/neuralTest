@@ -42,11 +42,8 @@ export default function EmailVerificationModal({ email, verificationCode, onVeri
 
           <div className="verification-info">
             <p className="verification-code-display">
-              <strong>Simulated Email Sent:</strong> Your verification code is{' '}
-              <code className="verification-code">{verificationCode}</code>
-            </p>
-            <p className="verification-hint">
-              (In a real app, this would be sent via email)
+              A verification code has been sent to <code className="verification-email">{email}</code>.
+              Please check your inbox and spam folder.
             </p>
           </div>
 

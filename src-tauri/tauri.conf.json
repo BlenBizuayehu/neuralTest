@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.neural.terminal",
   "build": {
-    "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+      "beforeDevCommand": "npm run dev",
+      "devUrl": "http://localhost:1421",
+      "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -38,6 +38,6 @@
       "icons/icon.ico"
     ],
     "shortDescription": "AI-Powered Terminal Assistant",
-    "longDescription": "Project Neural is an AI-powered terminal that converts natural language to shell commands, provides error fixes, and automates workflows."
+    "longDescription": "Project Neural is an AI-powered terminal that converts natural language to shell commands and provides rich error analysis and fixes."
   }
 }

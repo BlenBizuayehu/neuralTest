@@ -3,10 +3,9 @@ use tauri::AppHandle;
 use crate::ai;
 use crate::context;
 use crate::db;
-use crate::models::{AiCommandResponse, AiErrorAnalysis, AiExplanation, AiSuggestion, CommandHandle, CommandHistory, Context, DangerWarning, Preference, SessionSummary, Workflow, WorkflowRunResult, WorkflowStep};
+use crate::models::{AiCommandResponse, AiErrorAnalysis, AiExplanation, AiSuggestion, CommandHandle, CommandHistory, Context, DangerWarning, Preference, SessionSummary};
 use crate::redaction;
 use crate::runner;
-use crate::workflow;
 
 /// Application state
 pub struct AppState {
@@ -175,45 +174,6 @@ pub fn clear_api_key() -> Result<(), String> {
     ai::clear_api_key()
 }
 
-// ============ Workflows ============
-
-/// Run a workflow
-#[tauri::command]
-pub async fn run_workflow(
-    app: AppHandle,
-    definition: serde_json::Value,
-    cwd: Option<String>,
-    workflow_id: Option<i64>,
-) -> Result<WorkflowRunResult, String> {
-    let steps = workflow::parse_workflow_steps(definition)?;
-    workflow::run_workflow(app, workflow_id, steps, cwd).await
-}
-
-/// Create a new workflow
-#[tauri::command]
-pub fn create_workflow(
-    name: String,
-    description: Option<String>,
-    steps: Vec<WorkflowStep>,
-) -> Result<i64, String> {
-    workflow::create_workflow(&name, description.as_deref(), steps)
-}
-
-/// Get all saved workflows
-#[tauri::command]
-pub fn get_workflows() -> Result<Vec<Workflow>, String> {
-    workflow::get_workflows()
-}
-
-/// Generate a workflow from natural language
-#[tauri::command]
-pub async fn generate_workflow(
-    description: String,
-    cwd: Option<String>,
-) -> Result<Vec<WorkflowStep>, String> {
-    workflow::generate_workflow_from_nl(&description, cwd.as_deref()).await
-}
-
 // ============ History & Preferences ============
 
 /// Get command history
@@ -372,6 +332,15 @@ pub fn reset_password(email: String, code: String, new_password: String) -> Resu
     }
     
     db::reset_password(&email, &code, &new_password).map_err(|e| e.to_string())
+}
+
+/// Delete a user by email (admin/debug only)
+#[tauri::command]
+pub fn delete_user(email: String) -> Result<(), String> {
+    if email.is_empty() {
+        return Err("Email is required".to_string());
+    }
+    db::delete_user_by_email(&email).map_err(|e| e.to_string())
 }
 
 /// Check if user is authenticated (for backend history saving)

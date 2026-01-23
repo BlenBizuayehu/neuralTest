@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Terminal from './components/Terminal/Terminal';
 import AIPanel from './components/AIPanel/AIPanel';
-import WorkflowRunner from './components/WorkflowRunner/WorkflowRunner';
 import HistorySidebar from './components/History/HistorySidebar';
 import Login from './components/Auth/Login';
 import Register from './components/Auth/Register';
+import ProfileSidebar from './components/ProfileSidebar/ProfileSidebar';
 import './App.css';
 import { getContext, findProjectRoot, getHomeDirectory } from './services/tauriClient';
 
@@ -36,11 +36,12 @@ function App() {
   });
   const [showRegister, setShowRegister] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginMode, setLoginMode] = useState('login'); // 'login' | 'forgot'
   const [cwd, setCwd] = useState(null);
   const [context, setContext] = useState(null);
   const [isAiPanelOpen, setIsAiPanelOpen] = useState(false);
-  const [isWorkflowRunnerOpen, setIsWorkflowRunnerOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [aiPanelPrompt, setAiPanelPrompt] = useState(null);
   const [sessionId, setSessionId] = useState(() => {
     // Initialize sessionId: check localStorage first, then generate new
@@ -88,16 +89,11 @@ function App() {
         e.preventDefault();
         setIsAiPanelOpen(true);
       }
-      // Ctrl+Shift+W - Open Workflow Runner
-      if (e.ctrlKey && e.shiftKey && e.key === 'W') {
-        e.preventDefault();
-        setIsWorkflowRunnerOpen(true);
-      }
       // Escape - Close panels
       if (e.key === 'Escape') {
         setIsAiPanelOpen(false);
-        setIsWorkflowRunnerOpen(false);
         setIsHistoryOpen(false);
+        setIsProfileOpen(false);
       }
     };
 
@@ -220,21 +216,27 @@ function App() {
                   handleLogin(userId);
                   setShowLoginModal(false);
                   setShowRegister(false);
+                  setLoginMode('login');
                 }}
                 onSwitchToLogin={() => {
                   setShowRegister(false);
                   setShowLoginModal(true);
+                  setLoginMode('login');
                 }}
               />
             ) : (
               <Login
+                key={loginMode}
+                mode={loginMode}
                 onLogin={(userId) => {
                   handleLogin(userId);
                   setShowLoginModal(false);
+                  setLoginMode('login');
                 }}
                 onSwitchToRegister={() => {
                   setShowRegister(true);
                   setShowLoginModal(false);
+                  setLoginMode('login');
                 }}
               />
             )}
@@ -249,7 +251,7 @@ function App() {
             <span className="logo-icon">⚡</span>
             <span className="logo-text">Neural</span>
           </div>
-          {context?.project_type && (
+          {context?.project_type && context.project_type !== 'Node.js' && (
             <div className="project-badge">
               {context.project_type}
             </div>
@@ -268,20 +270,15 @@ function App() {
           >
             ➕
           </button>
-          <button
-            className="header-btn"
-            onClick={() => setIsHistoryOpen(true)}
-            title="Command History"
-          >
-            🕐
-          </button>
-          <button
-            className="header-btn"
-            onClick={() => setIsWorkflowRunnerOpen(true)}
-            title="Workflows (Ctrl+Shift+W)"
-          >
-            ⚡
-          </button>
+          {user && (
+            <button
+              className="header-btn"
+              onClick={() => setIsHistoryOpen(true)}
+              title="Command History"
+            >
+              🕐
+            </button>
+          )}
           <button
             className="header-btn ai-btn"
             onClick={() => setIsAiPanelOpen(true)}
@@ -291,11 +288,11 @@ function App() {
           </button>
           {user ? (
             <button
-              className="header-btn logout-btn"
-              onClick={handleLogout}
-              title={`Logout (${user.email})`}
+              className="header-btn profile-btn"
+              onClick={() => setIsProfileOpen(true)}
+              title={user.email}
             >
-              🚪
+              👤
             </button>
           ) : (
             <button
@@ -303,6 +300,7 @@ function App() {
               onClick={() => {
                 setShowLoginModal(true);
                 setShowRegister(false);
+                setLoginMode('login');
               }}
               title="Sign In (to save history)"
             >
@@ -349,13 +347,6 @@ function App() {
         cwd={cwd}
       />
 
-      {/* Workflow Runner */}
-      <WorkflowRunner
-        isOpen={isWorkflowRunnerOpen}
-        onClose={() => setIsWorkflowRunnerOpen(false)}
-        cwd={cwd}
-      />
-
       {/* History Sidebar */}
       <HistorySidebar
         isOpen={isHistoryOpen}
@@ -365,6 +356,23 @@ function App() {
         onNewSession={handleNewSession}
         currentSessionId={sessionId}
         refreshTrigger={historyRefreshTrigger}
+      />
+
+      {/* Profile Sidebar */}
+      <ProfileSidebar
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        user={user}
+        onLogout={() => {
+          handleLogout();
+          setIsProfileOpen(false);
+        }}
+        onOpenPasswordReset={() => {
+          setIsProfileOpen(false);
+          setShowLoginModal(true);
+          setShowRegister(false);
+          setLoginMode('forgot');
+        }}
       />
     </div>
   );
