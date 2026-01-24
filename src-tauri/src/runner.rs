@@ -122,8 +122,8 @@ pub async fn run_command_emit(
     let stdout_buf_clone = stdout_buffer.clone();
     let stderr_buf_clone = stderr_buffer.clone();
 
-    // Spawn stdout reader task
-    if let Some(stdout) = stdout {
+    // Spawn stdout reader task; keep JoinHandle so exit watcher can wait for stream to close
+    let stdout_handle = stdout.map(|stdout| {
         tokio::spawn(async move {
             let reader = BufReader::new(stdout);
             let mut lines = reader.lines();
@@ -140,11 +140,11 @@ pub async fn run_command_emit(
                     }),
                 );
             }
-        });
-    }
+        })
+    });
 
-    // Spawn stderr reader task
-    if let Some(stderr) = stderr {
+    // Spawn stderr reader task; keep JoinHandle so exit watcher can wait for stream to close
+    let stderr_handle = stderr.map(|stderr| {
         tokio::spawn(async move {
             let reader = BufReader::new(stderr);
             let mut lines = reader.lines();
@@ -161,38 +161,44 @@ pub async fn run_command_emit(
                     }),
                 );
             }
-        });
-    }
+        })
+    });
 
-    // Spawn exit watcher task
+    // Spawn exit watcher: wait for stdout/stderr to close (process exited), then remove Child and cleanup.
+    // We do NOT remove the Child from RUNNING_PROCESSES until the process has exited, so kill_command
+    // can find it and call start_kill() at any time while the process is running.
     let stdout_final = stdout_buffer.clone();
     let stderr_final = stderr_buffer.clone();
 
     tokio::spawn(async move {
-        // Wait a bit for the process to be stored
-        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        // Wait for both stdout and stderr streams to close (EOF when process exits)
+        if let Some(h) = stdout_handle {
+            let _ = h.await;
+        }
+        if let Some(h) = stderr_handle {
+            let _ = h.await;
+        }
 
-        // Try to wait for the process
-        // Remove from map first, then drop the lock before awaiting
-        let child_opt = {
-            let mut processes = RUNNING_PROCESSES.lock();
-            processes.remove(&id)
-        };
-
-        let exit_code = if let Some(mut child) = child_opt {
-            match child.wait().await {
-                Ok(status) => status.code().unwrap_or(-1),
-                Err(_) => -1,
+        // Process has exited; now remove Child and get exit code (wait() returns immediately)
+        let exit_code = {
+            let child_opt = {
+                let mut processes = RUNNING_PROCESSES.lock();
+                processes.remove(&id)
+            };
+            if let Some(mut child) = child_opt {
+                match child.wait().await {
+                    Ok(status) => status.code().unwrap_or(-1),
+                    Err(_) => -1,
+                }
+            } else {
+                -1
             }
-        } else {
-            -1
         };
 
-        // Give time for stdout/stderr to finish
+        // Brief delay for any final flush
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
         // Update database with results only if history was saved
-        // Check if ID is a valid database ID (positive and reasonable)
         if id > 0 && id < 1000000000 {
             let stdout_str = stdout_final.lock().clone();
             let stderr_str = stderr_final.lock().clone();
@@ -278,17 +284,21 @@ pub async fn run_command_sync(
     Ok((exit_code, stdout, stderr))
 }
 
-/// Kill a running command
+/// Kill a running command.
+/// Sends a kill signal to the process; does not remove the Child from RUNNING_PROCESSES.
+/// The exit watcher will remove it and run cleanup once the process has exited.
 pub fn kill_command(id: i64) -> Result<(), String> {
+    println!("🔴 RUNNER: Attempting to find process with ID: {}", id);
     let mut processes = RUNNING_PROCESSES.lock();
 
-    if let Some(mut child) = processes.remove(&id) {
-        // Try to kill the process
-        match child.start_kill() {
-            Ok(_) => Ok(()),
-            Err(e) => Err(format!("Failed to kill process: {}", e)),
-        }
+    if let Some(child) = processes.get_mut(&id) {
+        println!("✅ RUNNER: Process found! Sending kill signal...");
+        child.start_kill().map_err(|e| format!("Failed to kill process: {}", e))
     } else {
+        println!(
+            "❌ RUNNER: Process NOT found in map! Active IDs: {:?}",
+            processes.keys().cloned().collect::<Vec<i64>>()
+        );
         Err("Process not found or already completed".to_string())
     }
 }

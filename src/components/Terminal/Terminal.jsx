@@ -710,6 +710,8 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
   };
 
   const handleKill = async (id) => {
+    console.log('🔴 FRONTEND: handleKill called with ID:', id, '(type:', typeof id, ')');
+    console.log('🔴 FRONTEND: Invoking kill_command...');
     try {
       await killCommand(id);
     } catch (e) {

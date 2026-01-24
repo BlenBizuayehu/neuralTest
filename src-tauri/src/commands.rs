@@ -79,6 +79,7 @@ pub async fn run_command(
 /// Kill a running command
 #[tauri::command]
 pub fn kill_command(id: i64) -> Result<(), String> {
+    println!("🔴 BACKEND: kill_command received ID: {}", id);
     runner::kill_command(id)
 }
 

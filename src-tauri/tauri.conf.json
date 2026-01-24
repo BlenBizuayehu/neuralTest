@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Project Neural",
+  "productName": "Neural",
   "version": "0.1.0",
   "identifier": "com.neural.terminal",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Project Neural - AI Terminal",
+        "title": "Neural",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
@@ -38,6 +38,6 @@
       "icons/icon.ico"
     ],
     "shortDescription": "AI-Powered Terminal Assistant",
-    "longDescription": "Project Neural is an AI-powered terminal that converts natural language to shell commands and provides rich error analysis and fixes."
+    "longDescription": "Neural is an AI-powered terminal that converts natural language to shell commands and provides rich error analysis and fixes."
   }
 }
