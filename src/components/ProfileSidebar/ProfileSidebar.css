@@ -6,6 +6,7 @@
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
   z-index: 999;
   animation: fadeIn 0.2s ease;
@@ -23,9 +24,9 @@
   display: flex;
   flex-direction: column;
   animation: slideInRight 0.3s ease;
-  box-shadow: -4px 0 40px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-panel);
   z-index: 1000;
-  border-left: 1px solid var(--border-color, #2a2b3d);
+  border-left: 1px solid var(--border-color);
 }
 
 /* Header */
@@ -190,8 +191,8 @@
 }
 
 .profile-logout-btn:hover {
-  background: var(--accent-red, #f7768e);
-  color: #1a1b26;
+  background: var(--accent-red);
+  color: var(--btn-on-accent);
 }
 
 @keyframes slideInRight {

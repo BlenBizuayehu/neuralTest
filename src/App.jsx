@@ -153,6 +153,10 @@ function App() {
   }, []);
 
   const handleLogout = useCallback(() => {
+    // Clear auth modal state so a previously requested Forgot Password doesn't appear after logout
+    setShowLoginModal(false);
+    setShowRegister(false);
+    setLoginMode('login');
     // Clear all user data
     localStorage.removeItem('user');
     localStorage.removeItem('userId');
@@ -203,11 +207,12 @@ function App() {
 
   return (
     <div className="app">
-      {/* Login/Register Modal */}
-      {(showLoginModal || showRegister) && !user && (
+      {/* Login/Register Modal - show when auth UI requested; !user only for login/register, forgot works when logged in */}
+      {(showLoginModal || showRegister) && (
         <div className="auth-modal-overlay" onClick={() => {
           setShowLoginModal(false);
           setShowRegister(false);
+          setLoginMode('login');
         }}>
           <div className="auth-modal" onClick={(e) => e.stopPropagation()}>
             {showRegister ? (
@@ -322,19 +327,6 @@ function App() {
           userId={user?.id || null}
         />
       </main>
-
-      {/* Status Bar */}
-      <footer className="app-footer">
-        <div className="status-left">
-          {context?.has_git && <span className="status-item">🔀 Git</span>}
-          {context?.has_package_json && <span className="status-item">📦 npm</span>}
-          {context?.has_cargo_toml && <span className="status-item">🦀 Cargo</span>}
-          {context?.has_requirements_txt && <span className="status-item">🐍 pip</span>}
-        </div>
-        <div className="status-right">
-          <span className="status-item hint">Ctrl+Shift+P for AI</span>
-        </div>
-      </footer>
 
       {/* AI Panel */}
       <AIPanel

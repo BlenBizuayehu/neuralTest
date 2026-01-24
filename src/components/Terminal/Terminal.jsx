@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { MdSend } from 'react-icons/md';
 import CommandBlock from './CommandBlock';
 import AIProposal from './AIProposal';
 import SecurityWarningModal from '../SecurityWarning/SecurityWarningModal';
@@ -34,6 +35,8 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
   const [aiProposals, setAiProposals] = useState([]); // Store AI proposals for review
   const inputRef = useRef(null);
   const terminalRef = useRef(null);
+  const bottomRef = useRef(null);
+  const formRef = useRef(null);
   const unlistenRefs = useRef([]);
   const pendingAiFallback = useRef(null); // Store original command for AI fallback
   const isSubmittingRef = useRef(false); // Guard against duplicate submissions
@@ -402,12 +405,10 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
     };
   }, [cwd]); // Removed handleAiFallback from dependencies - using ref instead
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom when blocks or AI proposals change (new commands, streaming output)
   useEffect(() => {
-    if (terminalRef.current) {
-      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
-    }
-  }, [commandBlocks]);
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [commandBlocks, aiProposals]);
 
   const loadHistory = async () => {
     try {
@@ -417,6 +418,13 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
       console.error('Failed to load history:', e);
     }
   };
+
+  // Reusable submit: validates input, triggers form submit (same as Enter). Used by Send button and Enter in handleKeyDown.
+  const submitCommand = useCallback(() => {
+    if (!inputValue.trim()) return;
+    if (isLoading || isAiThinking || isSubmittingRef.current) return;
+    formRef.current?.requestSubmit();
+  }, [inputValue, isLoading, isAiThinking]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -495,8 +503,8 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
       return;
     }
 
-    // Step A: Check for AI trigger character (? or /)
-    if (cmd.startsWith('?') || cmd.startsWith('/')) {
+    // Step A: Check for AI trigger character (/)
+    if (cmd.startsWith('/')) {
       const aiPrompt = cmd.slice(1).trim();
       if (aiPrompt) {
         await handleAiCommand(aiPrompt);
@@ -607,7 +615,7 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
     }
   };
 
-  // Handle AI command (triggered by ? or /)
+  // Handle AI command (triggered by /)
   const handleAiCommand = async (prompt) => {
     setIsAiThinking(true);
     try {
@@ -663,6 +671,12 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
 
 
   const handleKeyDown = (e) => {
+    // Enter: execute command (same as Send button)
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      submitCommand();
+      return;
+    }
     // History navigation
     if (e.key === 'ArrowUp') {
       e.preventDefault();
@@ -1057,7 +1071,7 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
                 <span>AI Assistant</span>
               </div>
               <div className="tip">
-                <span className="tip-key">? or /</span>
+                <span className="tip-key">/</span>
                 <span>AI command prefix</span>
               </div>
               <div className="tip">
@@ -1107,10 +1121,13 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
             onDismiss={() => handleDismissProposal(proposal.id)}
           />
         ))}
+
+        {/* Anchor for auto-scroll: scrollIntoView keeps latest content in view */}
+        <div ref={bottomRef} />
       </div>
 
       {/* Input Area */}
-      <form className="terminal-input-area" onSubmit={handleSubmit}>
+      <form ref={formRef} className="terminal-input-area" onSubmit={handleSubmit}>
         <div className="input-wrapper">
           <span className="input-prompt">
             <span className="cwd">{cwd || '~'}</span>
@@ -1122,7 +1139,7 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isAiThinking ? "✨ AI thinking..." : "Type a command... (use ? for AI)"}
+            placeholder={isAiThinking ? "✨ AI thinking..." : "Type a command... (use / for AI)"}
             autoFocus
             disabled={isLoading || isAiThinking}
             spellCheck={false}
@@ -1132,10 +1149,11 @@ const Terminal = forwardRef(function Terminal({ cwd, sessionId, onCwdChange, onO
         <button
           type="button"
           className="ai-toggle"
-          onClick={() => onOpenAiPanel?.({ type: 'chat' })}
-          title="Open AI Assistant (Ctrl+Shift+P)"
+          onClick={submitCommand}
+          disabled={isLoading || isAiThinking || !inputValue.trim()}
+          title="Send (Enter)"
         >
-          ✨
+          <MdSend />
         </button>
       </form>
 

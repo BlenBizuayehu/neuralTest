@@ -1,17 +1,16 @@
-/* CSS Variables - Tokyo Night Theme */
 :root {
-  /* Background colors */
+  /* --- Core: Backgrounds --- */
   --bg-primary: #1a1b26;
   --bg-secondary: #16161e;
   --bg-tertiary: #1e1f2e;
   --bg-elevated: #24283b;
-  
-  /* Text colors */
+
+  /* --- Core: Text --- */
   --text-primary: #c0caf5;
   --text-secondary: #a9b1d6;
   --text-muted: #565f89;
-  
-  /* Accent colors */
+
+  /* --- Core: Accents --- */
   --accent-blue: #7aa2f7;
   --accent-purple: #bb9af7;
   --accent-cyan: #7dcfff;
@@ -20,23 +19,132 @@
   --accent-orange: #ff9e64;
   --accent-red: #f7768e;
   --accent-magenta: #ff007c;
-  
-  /* Border colors */
+  --accent-color: #7aa2f7;
+  --accent-hover: #89b4fa;
+  --accent-glow: rgba(122, 162, 247, 0.4);
+
+  /* --- Core: Borders --- */
   --border-color: #2a2b3d;
   --border-hover: #3d3e52;
-  
-  /* Shadows */
+
+  /* --- Core: Shadows --- */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.5);
-  
-  /* Gradients */
+  --shadow-panel: -4px 0 40px rgba(0, 0, 0, 0.5);
+  --auth-card-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+
+  /* --- Core: Gradients --- */
   --gradient-primary: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
   --gradient-glow: linear-gradient(135deg, rgba(122, 162, 247, 0.2), rgba(187, 154, 247, 0.2));
+
+  /* --- Overlays & modals --- */
+  --overlay-bg: rgba(0, 0, 0, 0.7);
+  --auth-bg: linear-gradient(135deg, #1a1b26 0%, #24283b 100%);
+
+  /* --- Terminal --- */
+  --terminal-bg: #13141c;
+  --input-area-bg: #1a1b26;
+  --input-bg: #15161e;
+  --key-bg: #1e1f2e;
+  --cwd-color: #9ece6a;
+  --prompt-color: #7aa2f7;
+  --placeholder-color: #565f89;
+  --focus-border: #7aa2f7;
+  --focus-ring: rgba(122, 162, 247, 0.15);
+
+  /* --- Scrollbars --- */
+  --scrollbar-track: #13141c;
+  --scrollbar-thumb: #2a2b3d;
+  --scrollbar-thumb-hover: #3d3e52;
+
+  /* --- Command blocks & output --- */
+  --block-bg: #1a1b26;
+  --header-bg: #1e1f2e;
+  --output-bg: #15161e;
+  --error-border: #f7768e;
+  --running-border: #7aa2f7;
+  --stdout-color: #a9b1d6;
+  --stderr-color: #f7768e;
+  --stderr-bg: rgba(247, 118, 142, 0.1);
+  --success-bg: rgba(158, 206, 106, 0.1);
+  --success-color: #9ece6a;
+  --error-bg: rgba(247, 118, 142, 0.2);
+  --error-color: #f7768e;
+  --running-color: #7aa2f7;
+  --action-hover-bg: #2a2b3d;
+  --btn-bg: #2a2b3d;
+  --btn-hover-bg: #3d3e52;
+  --suggestion-bg: linear-gradient(135deg, rgba(187, 154, 247, 0.1), rgba(122, 162, 247, 0.1));
+  --suggestion-header-color: #bb9af7;
+  --fix-bg: #1a1b26;
+  --code-color: #c0caf5;
+  --apply-btn-bg: #7aa2f7;
+  --apply-btn-color: #1a1b26;
+  --apply-btn-hover-bg: #89b4fa;
+  --spinner-track: #2a2b3d;
+  --spinner-color: #7aa2f7;
+
+  /* --- AI Proposal (terminal) --- */
+  --ai-proposal-bg: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  --ai-proposal-border: #334155;
+  --ai-proposal-accent: #3b82f6;
+  --ai-proposal-title: #e2e8f0;
+  --ai-proposal-text: #cbd5e1;
+  --ai-proposal-muted: #94a3b8;
+  --ai-proposal-command-bg: #0f172a;
+  --ai-proposal-command-border: #1e293b;
+  --ai-proposal-warning-bg: rgba(251, 191, 36, 0.1);
+  --ai-proposal-warning-color: #fbbf24;
+  --ai-proposal-code: #4ade80;
+  --ai-proposal-copy-bg: rgba(59, 130, 246, 0.2);
+  --ai-proposal-copy-border: #3b82f6;
+  --ai-proposal-copy-color: #60a5fa;
+  --ai-proposal-run-bg: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  --ai-proposal-dismiss-bg: rgba(148, 163, 184, 0.1);
+  --ai-proposal-dismiss-border: #475569;
+  --ai-proposal-dismiss-color: #94a3b8;
+
+  /* --- Panels (AI, History, Profile) --- */
+  --panel-bg: #1a1b26;
+  --tabs-bg: #15161e;
+  --tab-active-bg: #7aa2f7;
+  --tab-active-color: #1a1b26;
+  --close-hover-bg: #2a2b3d;
+  --setup-bg: linear-gradient(135deg, rgba(187, 154, 247, 0.15), rgba(122, 162, 247, 0.15));
+  --help-bg: rgba(122, 162, 247, 0.1);
+  --btn-primary-bg: #7aa2f7;
+  --btn-primary-color: #1a1b26;
+  --btn-primary-hover-bg: #89b4fa;
+  --btn-on-accent: #1a1b26;
+  --user-msg-bg: #7aa2f7;
+  --user-msg-color: #1a1b26;
+  --assistant-msg-bg: #1e1f2e;
+  --suggestion-btn-bg: #1e1f2e;
+  --suggestion-btn-hover-bg: #2a2b3d;
+  --cmd-item-bg: #15161e;
+  --part-item-bg: #15161e;
+  --token-color: #bb9af7;
+  --token-bg: rgba(187, 154, 247, 0.2);
+  --step-num-bg: #7aa2f7;
+  --step-num-color: #1a1b26;
+  --btn-workflow-bg: linear-gradient(135deg, #7aa2f7, #bb9af7);
+  --btn-workflow-color: #1a1b26;
+  --warning-bg: rgba(224, 175, 104, 0.15);
+  --warning-color: #e0af68;
+  --system-msg-bg: #1e1f2e;
+
+  /* --- Auth --- */
+  --auth-error-bg: rgba(247, 82, 95, 0.1);
+  --auth-error-border: rgba(247, 82, 95, 0.3);
+  --auth-error-color: #f7768e;
 }
 
-/* Light theme overrides */
+/* ========================================================================
+   Light theme overrides – full app palette
+   ======================================================================== */
 html[data-theme='light'] {
+  /* --- Core --- */
   --bg-primary: #f9fafb;
   --bg-secondary: #f3f4f6;
   --bg-tertiary: #e5e7eb;
@@ -54,12 +162,121 @@ html[data-theme='light'] {
   --accent-orange: #ea580c;
   --accent-red: #dc2626;
   --accent-magenta: #db2777;
+  --accent-color: #2563eb;
+  --accent-hover: #3b82f6;
+  --accent-glow: rgba(37, 99, 235, 0.25);
 
   --border-color: #d1d5db;
   --border-hover: #9ca3af;
 
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.12);
+  --shadow-panel: -4px 0 40px rgba(0, 0, 0, 0.15);
+  --auth-card-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+
   --gradient-primary: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
   --gradient-glow: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(124, 58, 237, 0.12));
+
+  --overlay-bg: rgba(0, 0, 0, 0.5);
+  --auth-bg: linear-gradient(135deg, #f9fafb 0%, #ffffff 100%);
+
+  /* --- Terminal --- */
+  --terminal-bg: #ffffff;
+  --input-area-bg: #ffffff;
+  --input-bg: #f3f4f6;
+  --key-bg: #e5e7eb;
+  --cwd-color: #16a34a;
+  --prompt-color: #2563eb;
+  --placeholder-color: #6b7280;
+  --focus-border: #2563eb;
+  --focus-ring: rgba(37, 99, 235, 0.2);
+
+  /* --- Scrollbars --- */
+  --scrollbar-track: #f3f4f6;
+  --scrollbar-thumb: #d1d5db;
+  --scrollbar-thumb-hover: #9ca3af;
+
+  /* --- Command blocks & output --- */
+  --block-bg: #ffffff;
+  --header-bg: #f9fafb;
+  --output-bg: #f9fafb;
+  --error-border: #dc2626;
+  --running-border: #2563eb;
+  --stdout-color: #374151;
+  --stderr-color: #dc2626;
+  --stderr-bg: rgba(220, 38, 38, 0.08);
+  --success-bg: rgba(22, 163, 74, 0.1);
+  --success-color: #16a34a;
+  --error-bg: rgba(220, 38, 38, 0.12);
+  --error-color: #dc2626;
+  --running-color: #2563eb;
+  --action-hover-bg: #e5e7eb;
+  --btn-bg: #e5e7eb;
+  --btn-hover-bg: #d1d5db;
+  --suggestion-bg: linear-gradient(135deg, rgba(124, 58, 237, 0.08), rgba(37, 99, 235, 0.08));
+  --suggestion-header-color: #7c3aed;
+  --fix-bg: #f9fafb;
+  --code-color: #111827;
+  --apply-btn-bg: #2563eb;
+  --apply-btn-color: #ffffff;
+  --apply-btn-hover-bg: #3b82f6;
+  --spinner-track: #e5e7eb;
+  --spinner-color: #2563eb;
+
+  /* --- AI Proposal --- */
+  --ai-proposal-bg: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  --ai-proposal-border: #cbd5e1;
+  --ai-proposal-accent: #2563eb;
+  --ai-proposal-title: #0f172a;
+  --ai-proposal-text: #475569;
+  --ai-proposal-muted: #64748b;
+  --ai-proposal-command-bg: #ffffff;
+  --ai-proposal-command-border: #e2e8f0;
+  --ai-proposal-warning-bg: rgba(245, 158, 11, 0.12);
+  --ai-proposal-warning-color: #d97706;
+  --ai-proposal-code: #16a34a;
+  --ai-proposal-copy-bg: rgba(37, 99, 235, 0.1);
+  --ai-proposal-copy-border: #2563eb;
+  --ai-proposal-copy-color: #2563eb;
+  --ai-proposal-run-bg: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  --ai-proposal-dismiss-bg: rgba(148, 163, 184, 0.15);
+  --ai-proposal-dismiss-border: #cbd5e1;
+  --ai-proposal-dismiss-color: #64748b;
+
+  /* --- Panels --- */
+  --panel-bg: #ffffff;
+  --tabs-bg: #f3f4f6;
+  --tab-active-bg: #2563eb;
+  --tab-active-color: #ffffff;
+  --close-hover-bg: #e5e7eb;
+  --setup-bg: linear-gradient(135deg, rgba(124, 58, 237, 0.08), rgba(37, 99, 235, 0.08));
+  --help-bg: rgba(37, 99, 235, 0.08);
+  --btn-primary-bg: #2563eb;
+  --btn-primary-color: #ffffff;
+  --btn-primary-hover-bg: #3b82f6;
+  --btn-on-accent: #ffffff;
+  --user-msg-bg: #2563eb;
+  --user-msg-color: #ffffff;
+  --assistant-msg-bg: #f3f4f6;
+  --suggestion-btn-bg: #f9fafb;
+  --suggestion-btn-hover-bg: #e5e7eb;
+  --cmd-item-bg: #f9fafb;
+  --part-item-bg: #f9fafb;
+  --token-color: #7c3aed;
+  --token-bg: rgba(124, 58, 237, 0.12);
+  --step-num-bg: #2563eb;
+  --step-num-color: #ffffff;
+  --btn-workflow-bg: linear-gradient(135deg, #2563eb, #7c3aed);
+  --btn-workflow-color: #ffffff;
+  --warning-bg: rgba(245, 158, 11, 0.12);
+  --warning-color: #d97706;
+  --system-msg-bg: #e5e7eb;
+
+  /* --- Auth --- */
+  --auth-error-bg: rgba(220, 38, 38, 0.08);
+  --auth-error-border: rgba(220, 38, 38, 0.25);
+  --auth-error-color: #dc2626;
 }
 
 /* Global Styles */
@@ -201,7 +418,7 @@ body {
 }
 
 .header-btn.ai-btn:hover {
-  box-shadow: 0 4px 20px rgba(122, 162, 247, 0.4);
+  box-shadow: 0 4px 20px var(--accent-glow);
   transform: translateY(-1px);
 }
 
@@ -230,11 +447,12 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--overlay-bg);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10000;
+  -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
 }
 
@@ -244,40 +462,12 @@ body {
   margin: 20px;
 }
 
-/* Main Content */
+/* Main Content - flex: 1 fills remaining space below header; terminal touches bottom */
 .app-main {
   flex: 1;
   overflow: hidden;
   position: relative;
-}
-
-/* Footer / Status Bar */
-.app-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 20px;
-  background: var(--bg-tertiary);
-  border-top: 1px solid var(--border-color);
-  font-size: 12px;
-}
-
-.status-left, .status-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.status-item {
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.status-item.hint {
-  color: var(--accent-blue);
-  opacity: 0.7;
+  min-height: 0;
 }
 
 /* Selection */

@@ -10,7 +10,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "setup": "npm install --cache ./.npm-cache"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -23,6 +24,6 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2",
     "@vitejs/plugin-react": "^4.6.0",
-    "vite": "^7.0.4"
+    "vite": "^6.0.0"
   }
 }

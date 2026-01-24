@@ -1,11 +1,11 @@
 .ai-proposal {
-  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-  border: 1px solid #334155;
-  border-left: 3px solid #3b82f6;
+  background: var(--ai-proposal-bg);
+  border: 1px solid var(--ai-proposal-border);
+  border-left: 3px solid var(--ai-proposal-accent);
   border-radius: 8px;
   padding: 16px;
   margin: 12px 0;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-sm);
   animation: slideIn 0.3s ease-out;
 }
 
@@ -35,7 +35,7 @@
 .ai-proposal-title {
   flex: 1;
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--ai-proposal-title);
   font-size: 14px;
 }
 
@@ -44,7 +44,7 @@
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--ai-proposal-dismiss-bg);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -52,7 +52,7 @@
 .ai-proposal-dismiss {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--ai-proposal-muted);
   font-size: 24px;
   cursor: pointer;
   padding: 0;
@@ -66,8 +66,8 @@
 }
 
 .ai-proposal-dismiss:hover {
-  background: rgba(239, 68, 68, 0.2);
-  color: #f87171;
+  background: var(--error-bg);
+  color: var(--error-color);
 }
 
 .ai-proposal-content {
@@ -75,36 +75,36 @@
 }
 
 .ai-proposal-explanation {
-  color: #cbd5e1;
+  color: var(--ai-proposal-text);
   font-size: 13px;
   line-height: 1.5;
   margin-bottom: 12px;
 }
 
 .ai-proposal-explanation strong {
-  color: #e2e8f0;
+  color: var(--ai-proposal-title);
 }
 
 .ai-proposal-warning {
-  background: rgba(251, 191, 36, 0.1);
-  border-left: 3px solid #fbbf24;
+  background: var(--ai-proposal-warning-bg);
+  border-left: 3px solid var(--ai-proposal-warning-color);
   padding: 8px 12px;
   border-radius: 4px;
   margin-bottom: 12px;
-  color: #fbbf24;
+  color: var(--ai-proposal-warning-color);
   font-size: 12px;
 }
 
 .ai-proposal-command {
-  background: #0f172a;
-  border: 1px solid #1e293b;
+  background: var(--ai-proposal-command-bg);
+  border: 1px solid var(--ai-proposal-command-border);
   border-radius: 6px;
   padding: 12px;
 }
 
 .ai-proposal-command-label {
   font-size: 11px;
-  color: #64748b;
+  color: var(--ai-proposal-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 8px;
@@ -118,7 +118,7 @@
 
 .ai-proposal-command-code code {
   flex: 1;
-  color: #4ade80;
+  color: var(--ai-proposal-code);
   font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
   font-size: 13px;
   background: transparent;
@@ -128,9 +128,9 @@
 }
 
 .ai-proposal-copy {
-  background: rgba(59, 130, 246, 0.2);
-  border: 1px solid #3b82f6;
-  color: #60a5fa;
+  background: var(--ai-proposal-copy-bg);
+  border: 1px solid var(--ai-proposal-copy-border);
+  color: var(--ai-proposal-copy-color);
   padding: 4px 8px;
   border-radius: 4px;
   cursor: pointer;
@@ -140,8 +140,8 @@
 }
 
 .ai-proposal-copy:hover {
-  background: rgba(59, 130, 246, 0.3);
-  border-color: #60a5fa;
+  background: var(--focus-ring);
+  border-color: var(--ai-proposal-copy-color);
 }
 
 .ai-proposal-actions {
@@ -151,9 +151,9 @@
 }
 
 .ai-proposal-run-btn {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: var(--ai-proposal-run-bg);
   border: none;
-  color: white;
+  color: var(--btn-on-accent);
   padding: 8px 16px;
   border-radius: 6px;
   font-weight: 600;
@@ -166,9 +166,9 @@
 }
 
 .ai-proposal-run-btn:hover {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  filter: brightness(1.05);
   transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 8px var(--accent-glow);
 }
 
 .ai-proposal-run-btn:active {
@@ -176,9 +176,9 @@
 }
 
 .ai-proposal-dismiss-btn {
-  background: rgba(148, 163, 184, 0.1);
-  border: 1px solid #475569;
-  color: #94a3b8;
+  background: var(--ai-proposal-dismiss-bg);
+  border: 1px solid var(--ai-proposal-dismiss-border);
+  color: var(--ai-proposal-dismiss-color);
   padding: 8px 16px;
   border-radius: 6px;
   font-weight: 500;
@@ -188,7 +188,7 @@
 }
 
 .ai-proposal-dismiss-btn:hover {
-  background: rgba(148, 163, 184, 0.2);
-  border-color: #64748b;
-  color: #cbd5e1;
+  background: var(--btn-bg);
+  border-color: var(--border-hover);
+  color: var(--ai-proposal-text);
 }
