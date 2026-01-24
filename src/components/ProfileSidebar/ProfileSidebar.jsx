@@ -97,7 +97,7 @@ export default function ProfileSidebar({ isOpen, onClose, user, onLogout, onOpen
             type="button"
             onClick={handleLogoutClick}
           >
-            🚪 Log out
+            Log out
           </button>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import './AIPanel.css';
+import ConfirmationModal from '../UI/ConfirmationModal';
 import {
   nlToCmd,
   explainCommand,
@@ -24,6 +25,7 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [provider, setProvider] = useState('groq'); // 'groq', 'gemini', or 'openai'
   const [mode, setMode] = useState('chat'); // 'chat' or 'explain'
+  const [showResetKeyModal, setShowResetKeyModal] = useState(false);
   const inputRef = useRef(null);
   const messagesRef = useRef(null);
 
@@ -121,17 +123,19 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
     }
   };
 
-  const handleResetApiKey = async () => {
-    if (confirm('Are you sure you want to reset your API key? You will need to enter it again.')) {
-      try {
-        await clearApiKey();
-        setIsConfigured(false);
-        setApiKeyInput('');
-        addMessage('system', 'API key cleared. Please enter a new API key.');
-      } catch (e) {
-        addMessage('error', `Failed to clear API key: ${e}`);
-      }
+  const handleClearKey = async () => {
+    try {
+      await clearApiKey();
+      setIsConfigured(false);
+      setApiKeyInput('');
+      addMessage('system', 'API key cleared. Please enter a new API key.');
+    } catch (e) {
+      addMessage('error', `Failed to clear API key: ${e}`);
     }
+  };
+
+  const handleResetApiKey = () => {
+    setShowResetKeyModal(true);
   };
 
   const addMessage = (type, content, data = null) => {
@@ -288,6 +292,7 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
   if (!isOpen) return null;
 
   return (
+    <>
     <div className="ai-panel-overlay" onClick={onClose}>
       <div className="ai-panel" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
@@ -470,6 +475,15 @@ export default function AIPanel({ isOpen, onClose, initialPrompt, cwd }) {
         )}
       </div>
     </div>
+    <ConfirmationModal
+      isOpen={showResetKeyModal}
+      title="Reset API Key"
+      message="Are you sure you want to reset your API key? You will need to enter it again."
+      onCancel={() => setShowResetKeyModal(false)}
+      onConfirm={() => { handleClearKey(); setShowResetKeyModal(false); }}
+      confirmVariant="danger"
+    />
+    </>
   );
 }
 

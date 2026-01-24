@@ -41,6 +41,7 @@
   /* --- Overlays & modals --- */
   --overlay-bg: rgba(0, 0, 0, 0.7);
   --auth-bg: linear-gradient(135deg, #1a1b26 0%, #24283b 100%);
+  --bg-block: #1a1b26;
 
   /* --- Terminal --- */
   --terminal-bg: #13141c;
@@ -180,6 +181,7 @@ html[data-theme='light'] {
 
   --overlay-bg: rgba(0, 0, 0, 0.5);
   --auth-bg: linear-gradient(135deg, #f9fafb 0%, #ffffff 100%);
+  --bg-block: #ffffff;
 
   /* --- Terminal --- */
   --terminal-bg: #ffffff;
